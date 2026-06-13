@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Xeneon Edge Dashboard</title>
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/widgets.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import { applyScale } from './js/scale.js';
+      import { initGrid } from './js/grid.js';
+      applyScale();
+      initGrid(document.getElementById('root'));
+    </script>
+  </body>
+</html>

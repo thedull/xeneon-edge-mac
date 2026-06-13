@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YouTube</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/widgets.css" />
+  </head>
+  <body>
+    <div class="yt" data-widget="youtube">
+      <div class="yt-player"><div id="player"></div></div>
+
+      <div class="yt-toolbar">
+        <button class="yt-btn" data-action="toggle-search">&#128269; Search</button>
+        <button class="yt-btn" data-action="playpause" aria-label="Play/Pause">&#9208;</button>
+      </div>
+
+      <div class="yt-search" data-field="searchPanel">
+        <div class="yt-search-bar">
+          <input data-field="q" placeholder="Search music…" autocomplete="off" />
+          <button class="yt-btn" data-action="close-search" aria-label="Close">&#10005;</button>
+        </div>
+        <div class="yt-results" data-field="results"></div>
+        <div data-field="osk"></div>
+      </div>
+
+      <div class="yt-error hidden" data-field="error">
+        <div class="status-banner">This video can&rsquo;t be embedded — try another.</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { getConfig } from '../js/config.js';
+      import { attachKeyboard } from '../js/keyboard.js';
+
+      const root = document.querySelector('[data-widget="youtube"]');
+      const panel = document.querySelector('[data-field="searchPanel"]');
+      const results = document.querySelector('[data-field="results"]');
+      const errorEl = document.querySelector('[data-field="error"]');
+      const q = document.querySelector('[data-field="q"]');
+      const esc = (s) => {
+        const d = document.createElement('div');
+        d.textContent = s ?? '';
+        return d.innerHTML;
+      };
+
+      const state = { results: [], lastLoaded: null };
+      let player = null;
+      let pendingId = null;
+
+      // --- YouTube IFrame Player API (degrades gracefully if blocked/offline) ---
+      window.onYouTubeIframeAPIReady = () => {
+        try {
+          player = new YT.Player('player', {
+            width: '100%',
+            height: '100%',
+            playerVars: { playsinline: 1, modestbranding: 1, rel: 0 },
+            events: {
+              onReady: () => {
+                if (pendingId) loadVideo(pendingId);
+              },
+              onError: () => showError(),
+            },
+          });
+        } catch {
+          /* player stays null; search still works */
+        }
+      };
+
+      function ensureApi() {
+        if (window.YT && window.YT.Player) return window.onYouTubeIframeAPIReady();
+        const s = document.createElement('script');
+        s.src = 'https://www.youtube.com/iframe_api';
+        s.onerror = () => {}; // offline/blocked — toolbar + search remain usable
+        document.head.appendChild(s);
+      }
+
+      function loadVideo(id) {
+        hideError();
+        state.lastLoaded = id;
+        pendingId = id;
+        if (player && typeof player.loadVideoById === 'function') {
+          player.loadVideoById(id);
+          pendingId = null;
+        }
+        closeSearch();
+      }
+
+      const showError = () => errorEl.classList.remove('hidden');
+      const hideError = () => errorEl.classList.add('hidden');
+      const toggleSearch = () => panel.classList.toggle('open');
+      const closeSearch = () => panel.classList.remove('open');
+
+      async function search(query) {
+        const term = (query || '').trim();
+        if (!term) return;
+        const key = getConfig('ytkey', '');
+        if (!key) {
+          results.innerHTML =
+            '<div class="status-banner">Add a YouTube Data API key (?ytkey=… or saved config) to search.</div>';
+          return;
+        }
+        const url =
+          'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video' +
+          `&videoEmbeddable=true&maxResults=8&q=${encodeURIComponent(term)}&key=${encodeURIComponent(key)}`;
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          state.results = (data.items || []).map((it) => ({
+            id: it.id?.videoId,
+            title: it.snippet?.title,
+            channel: it.snippet?.channelTitle,
+            thumb: it.snippet?.thumbnails?.medium?.url || '',
+          }));
+          renderResults();
+        } catch {
+          results.innerHTML = '<div class="status-banner">Search failed.</div>';
+        }
+      }
+
+      function renderResults() {
+        results.replaceChildren();
+        for (const r of state.results) {
+          if (!r.id) continue;
+          const b = document.createElement('button');
+          b.className = 'yt-result';
+          b.dataset.videoId = r.id;
+          b.innerHTML =
+            `<img src="${esc(r.thumb)}" alt="" />` +
+            `<span><span class="t">${esc(r.title)}</span><span class="c">${esc(r.channel)}</span></span>`;
+          b.addEventListener('click', () => loadVideo(r.id));
+          results.appendChild(b);
+        }
+      }
+
+      root.addEventListener('click', (e) => {
+        const a = e.target.closest('[data-action]');
+        if (!a) return;
+        const action = a.dataset.action;
+        if (action === 'toggle-search') toggleSearch();
+        else if (action === 'close-search') closeSearch();
+        else if (action === 'playpause') {
+          try {
+            const st = player && player.getPlayerState && player.getPlayerState();
+            if (st === 1) player.pauseVideo();
+            else player && player.playVideo && player.playVideo();
+          } catch {
+            /* ignore */
+          }
+        }
+      });
+
+      attachKeyboard(document.querySelector('[data-field="osk"]'), q, { onEnter: search });
+      q.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') search(q.value);
+      });
+
+      // Test seam: drive the widget deterministically without real YouTube.
+      window.__yt = {
+        loadVideo,
+        search,
+        simulateError: showError,
+        get results() {
+          return state.results;
+        },
+        get lastLoaded() {
+          return state.lastLoaded;
+        },
+      };
+
+      ensureApi();
+      root.dataset.ready = 'true';
+    </script>
+  </body>
+</html>

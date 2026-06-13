@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Processes</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/widgets.css" />
+  </head>
+  <body>
+    <div class="widget" data-widget="processes">
+      <div class="widget-head">
+        <span class="widget-title">Top Processes</span>
+        <span class="widget-sub">by CPU</span>
+      </div>
+      <div class="proc-table">
+        <div class="proc-row head">
+          <span class="num">PID</span>
+          <span class="name">Process</span>
+          <span class="name">User</span>
+          <span class="num">CPU%</span>
+          <span class="num">Memory</span>
+        </div>
+        <div id="rows"></div>
+      </div>
+    </div>
+    <script type="module">
+      import { fetchJson } from '../js/host-bridge.js';
+
+      const root = document.querySelector('[data-widget="processes"]');
+      const body = document.getElementById('rows');
+      const esc = (s) => {
+        const d = document.createElement('div');
+        d.textContent = s ?? '';
+        return d.innerHTML;
+      };
+
+      function render(list) {
+        body.replaceChildren();
+        for (const p of list) {
+          const row = document.createElement('div');
+          row.className = 'proc-row';
+          row.dataset.pid = p.pid;
+          row.innerHTML =
+            `<span class="num">${p.pid}</span>` +
+            `<span class="name">${esc(p.name)}</span>` +
+            `<span class="name">${esc(p.user)}</span>` +
+            `<span class="num">${Number(p.cpu).toFixed(1)}</span>` +
+            `<span class="num">${p.memMB} MB</span>`;
+          body.appendChild(row);
+        }
+        root.dataset.ready = 'true';
+      }
+
+      async function tick() {
+        try {
+          const d = await fetchJson('/api/processes?limit=12');
+          render(d.processes || []);
+        } catch {
+          /* keep last render */
+        }
+      }
+
+      tick();
+      const timer = setInterval(tick, 2000);
+      window.addEventListener('pagehide', () => clearInterval(timer));
+    </script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+out/
+.DS_Store
+*.log
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+# local installed community plugins
+web/plugins/installed/
+# local config / secrets
+.env
+config.local.json

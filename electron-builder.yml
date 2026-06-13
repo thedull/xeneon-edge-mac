@@ -1,0 +1,21 @@
+appId: com.gabrieltrujillo.xeneon-edge-mac
+productName: Xeneon Edge
+directories:
+  output: dist
+files:
+  - src/**/*
+  - web/**/*
+  - package.json
+mac:
+  category: public.app-category.utilities
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSAppleEventsUsageDescription: >-
+      Xeneon Edge controls Apple Music (now playing and transport) on your behalf.
+    NSMicrophoneUsageDescription: >-
+      Not used by default; reserved for an optional audio-reactive visualizer.

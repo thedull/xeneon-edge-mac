@@ -1,0 +1,25 @@
+{
+  "name": "xeneon-edge-mac",
+  "version": "0.1.0",
+  "private": true,
+  "description": "macOS widget dashboard for the Corsair Xeneon Edge (2560x720 touchscreen) — a Mac-native alternative to Windows-only iCUE Widgets.",
+  "type": "module",
+  "main": "src/main.cjs",
+  "author": "Gabriel Trujillo",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "node scripts/dev.mjs",
+    "kiosk:primary": "node scripts/kiosk-on-primary.mjs",
+    "mock:ai": "node mock/ai-usage-server.mjs",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

@@ -1,0 +1,5 @@
+  4821 gabbytee 18.2  7.3 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+   512 root      9.0  1.2 /usr/sbin/coreaudiod
+  1200 gabbytee  5.5  3.1 /System/Applications/Music.app/Contents/MacOS/Music
+  2048 gabbytee  3.2 12.5 /Applications/Visual Studio Code.app/Contents/MacOS/Electron
+   330 root      0.4  0.6 launchd

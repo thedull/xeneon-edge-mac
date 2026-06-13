@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Now Playing</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/widgets.css" />
+  </head>
+  <body>
+    <div class="widget" data-widget="media">
+      <div class="media" data-field="player" hidden>
+        <div class="media-art" data-field="art"></div>
+        <div class="media-meta">
+          <span class="kicker">Now Playing · Apple Music</span>
+          <span class="media-title" data-field="title">--</span>
+          <span class="media-artist" data-field="artist">--</span>
+          <div class="media-progress"><span data-field="progress"></span></div>
+          <div class="media-times">
+            <span data-field="cur">0:00</span><span data-field="dur">0:00</span>
+          </div>
+          <div class="media-controls">
+            <button class="ctrl" data-action="previous" aria-label="Previous">&#9198;</button>
+            <button class="ctrl play" data-action="playpause" aria-label="Play/Pause" data-field="playicon">&#9654;</button>
+            <button class="ctrl" data-action="next" aria-label="Next">&#9197;</button>
+            <div class="media-volume">
+              <span aria-hidden="true">&#128266;</span>
+              <input type="range" min="0" max="100" value="50" data-field="volume" aria-label="Volume" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="media-empty" data-field="empty">
+        <span class="widget-title">Apple Music</span>
+        <span class="widget-sub" data-field="emptyReason">Nothing playing</span>
+      </div>
+    </div>
+    <script type="module">
+      import { fetchJson, postJson, apiUrl, connectEvents } from '../js/host-bridge.js';
+
+      const root = document.querySelector('[data-widget="media"]');
+      const $ = (f) => document.querySelector(`[data-field="${f}"]`);
+      const player = $('player');
+      const empty = $('empty');
+      let last = null;
+      let lastTickAt = 0;
+
+      const fmtTime = (s) => {
+        s = Math.max(0, Math.floor(s || 0));
+        const m = Math.floor(s / 60);
+        return `${m}:${String(s % 60).padStart(2, '0')}`;
+      };
+
+      function render(d) {
+        last = d;
+        lastTickAt = performance.now();
+        if (!d || !d.available) {
+          player.hidden = true;
+          empty.hidden = false;
+          $('emptyReason').textContent = d?.reason || 'Nothing playing';
+          root.dataset.ready = 'true';
+          return;
+        }
+        player.hidden = false;
+        empty.hidden = true;
+        $('title').textContent = d.title || '--';
+        $('artist').textContent = d.artist || '--';
+        $('playicon').innerHTML = d.playerState === 'playing' ? '&#9208;' : '&#9654;';
+        if (d.artworkId) {
+          $('art').style.backgroundImage = `url("${apiUrl('/api/media/artwork')}?id=${encodeURIComponent(d.artworkId)}")`;
+        }
+        const vol = $('volume');
+        if (document.activeElement !== vol && d.volume != null) vol.value = d.volume;
+        updateProgress(d.positionSec, d.durationSec);
+        $('dur').textContent = fmtTime(d.durationSec);
+        root.dataset.ready = 'true';
+      }
+
+      function updateProgress(pos, dur) {
+        const pct = dur > 0 ? Math.min(100, (pos / dur) * 100) : 0;
+        $('progress').style.width = `${pct}%`;
+        $('cur').textContent = fmtTime(pos);
+      }
+
+      // Smooth the progress bar between polls while playing.
+      function raf() {
+        if (last && last.available && last.playerState === 'playing' && last.durationSec > 0) {
+          const elapsed = (performance.now() - lastTickAt) / 1000;
+          updateProgress(Math.min(last.durationSec, last.positionSec + elapsed), last.durationSec);
+        }
+        requestAnimationFrame(raf);
+      }
+      requestAnimationFrame(raf);
+
+      root.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        try {
+          render(await postJson(`/api/media/${btn.dataset.action}`));
+        } catch {
+          /* ignore */
+        }
+      });
+
+      $('volume').addEventListener('change', async (e) => {
+        try {
+          await postJson('/api/media/volume', { volume: Number(e.target.value) });
+        } catch {
+          /* ignore */
+        }
+      });
+
+      fetchJson('/api/media').then(render).catch(() => render(null));
+      connectEvents({ media: render });
+    </script>
+  </body>
+</html>

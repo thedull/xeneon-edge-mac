@@ -1,0 +1,8 @@
+{
+  "available": true,
+  "providers": [
+    { "provider": "claude", "spendUSD": 4.12, "tokensIn": 182000, "tokensOut": 44100, "requests": 73, "window": "today" },
+    { "provider": "openrouter", "spendUSD": 1.07, "tokensIn": 90100, "tokensOut": 12800, "requests": 31, "window": "today" }
+  ],
+  "totalSpendUSD": 5.19
+}

@@ -1,0 +1,4 @@
+Name  Mtu   Network       Address            Ipkts Ierrs     Ibytes    Opkts Oerrs     Obytes  Coll
+lo0   16384 <Link#1>                          1200     0     120000     1200     0     120000     0
+en0   1500  <Link#11>     a4:83:e7:11:22:33  984512     0  123456789   654321     0  987654321     0
+en0   1500  192.168.1     192.168.1.42       984512     -  123456789   654321     -  987654321     -

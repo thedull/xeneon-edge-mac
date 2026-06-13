@@ -1,0 +1,136 @@
+// API routing: maps /api/* + /events to the collectors. Pure logic, no Electron.
+import { collect as collectSystem } from './collectors/system.mjs';
+import { collect as collectNetwork } from './collectors/network.mjs';
+import { collect as collectProcesses } from './collectors/processes.mjs';
+import {
+  collect as collectMedia,
+  command as mediaCommand,
+  setVolume as mediaSetVolume,
+  artwork as mediaArtwork,
+} from './collectors/media.mjs';
+import { collect as collectAiUsage } from './collectors/ai-usage.mjs';
+import { USE_FIXTURES } from './collectors/_exec.mjs';
+
+function sendJson(res, status, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  });
+  res.end(body);
+}
+
+async function readBody(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  if (!chunks.length) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    return {};
+  }
+}
+
+// Returns true if the request was handled here.
+export async function handleApi(req, res, url, ctx = {}) {
+  const { pathname } = url;
+  const { sse, getDisplayInfo } = ctx;
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    });
+    res.end();
+    return true;
+  }
+
+  if (pathname === '/events') {
+    if (sse) sse.add(req, res);
+    else sendJson(res, 503, { error: 'sse unavailable' });
+    return true;
+  }
+
+  if (!pathname.startsWith('/api/')) return false;
+
+  try {
+    switch (true) {
+      case pathname === '/api/health': {
+        const display = typeof getDisplayInfo === 'function' ? getDisplayInfo() : { found: false };
+        return ok(
+          res,
+          {
+            ok: true,
+            ts: Date.now(),
+            fixtures: USE_FIXTURES,
+            capabilities: {
+              system: true,
+              network: true,
+              processes: true,
+              media: true,
+              aiUsage: true,
+            },
+            display,
+          },
+        );
+      }
+      case pathname === '/api/system':
+        return ok(res, await collectSystem());
+      case pathname === '/api/network':
+        return ok(res, await collectNetwork());
+      case pathname === '/api/processes': {
+        const limit = clampLimit(url.searchParams.get('limit'));
+        return ok(res, await collectProcesses(limit));
+      }
+      case pathname === '/api/media':
+        return ok(res, await collectMedia());
+      case pathname === '/api/media/artwork': {
+        const art = await mediaArtwork();
+        if (!art) {
+          res.writeHead(404, { 'Access-Control-Allow-Origin': '*' });
+          res.end();
+          return true;
+        }
+        res.writeHead(200, {
+          'Content-Type': art.contentType,
+          'Access-Control-Allow-Origin': '*',
+          ETag: `"${art.id}"`,
+          'Cache-Control': 'no-cache',
+        });
+        res.end(art.buffer);
+        return true;
+      }
+      case pathname === '/api/media/playpause' && req.method === 'POST':
+        return ok(res, await mediaCommand('playpause'));
+      case pathname === '/api/media/next' && req.method === 'POST':
+        return ok(res, await mediaCommand('next'));
+      case pathname === '/api/media/previous' && req.method === 'POST':
+        return ok(res, await mediaCommand('previous'));
+      case pathname === '/api/media/volume' && req.method === 'POST': {
+        const body = await readBody(req);
+        return ok(res, await mediaSetVolume(body.volume));
+      }
+      case pathname === '/api/ai-usage':
+        return ok(res, await collectAiUsage());
+      default:
+        sendJson(res, 404, { error: `no route: ${req.method} ${pathname}` });
+        return true;
+    }
+  } catch (err) {
+    sendJson(res, 500, { error: err.message });
+    return true;
+  }
+}
+
+function ok(res, obj) {
+  sendJson(res, 200, obj);
+  return true;
+}
+
+function clampLimit(v) {
+  const n = Number.parseInt(v ?? '10', 10);
+  if (Number.isNaN(n)) return 10;
+  return Math.max(1, Math.min(100, n));
+}

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>System</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/widgets.css" />
+  </head>
+  <body>
+    <div class="widget" data-widget="system">
+      <div class="widget-head">
+        <span class="widget-title">System</span>
+        <span class="widget-sub" data-field="source"></span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric" data-key="cpu">
+          <span class="metric-label">CPU</span>
+          <div class="metric-value"><span data-field="cpu">--</span><span class="unit">%</span></div>
+          <div class="bar"><span data-bar="cpu"></span></div>
+        </div>
+        <div class="metric" data-key="ram">
+          <span class="metric-label">Memory</span>
+          <div class="metric-value"><span data-field="ram">--</span><span class="unit">%</span></div>
+          <div class="metric-detail" data-field="ramDetail">--</div>
+          <div class="bar"><span data-bar="ram"></span></div>
+        </div>
+        <div class="metric" data-key="disk">
+          <span class="metric-label">Disk</span>
+          <div class="metric-value"><span data-field="disk">--</span><span class="unit">%</span></div>
+          <div class="bar"><span data-bar="disk"></span></div>
+        </div>
+        <div class="metric" data-key="net">
+          <span class="metric-label">Network</span>
+          <div class="net-row">
+            <span class="net down"><span class="arrow">&#9660;</span><span data-field="down">--</span></span>
+            <span class="net up"><span class="arrow">&#9650;</span><span data-field="up">--</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module">
+      import { fetchJson, connectEvents } from '../js/host-bridge.js';
+
+      const root = document.querySelector('[data-widget="system"]');
+      const setVal = (field, val) => {
+        const e = document.querySelector(`[data-field="${field}"]`);
+        if (e) e.textContent = val;
+      };
+      const setBar = (key, pct) => {
+        const e = document.querySelector(`[data-bar="${key}"]`);
+        if (e) e.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      };
+      const fmtGB = (mb) => (mb != null ? `${(mb / 1024).toFixed(1)} GB` : '--');
+
+      function renderSystem(d) {
+        if (d.cpu != null) {
+          setVal('cpu', Math.round(d.cpu));
+          setBar('cpu', d.cpu);
+        }
+        if (d.ram != null) {
+          setVal('ram', Math.round(d.ram));
+          setBar('ram', d.ram);
+          setVal('ramDetail', `${fmtGB(d.ramUsedMB)} / ${fmtGB(d.ramTotalMB)}`);
+        }
+        if (d.disk != null) {
+          setVal('disk', Math.round(d.disk));
+          setBar('disk', d.disk);
+        }
+        if (d.source) setVal('source', d.source);
+        root.dataset.ready = 'true';
+      }
+
+      function renderNetwork(d) {
+        setVal('down', d.downloadHuman || '0 B/s');
+        setVal('up', d.uploadHuman || '0 B/s');
+      }
+
+      fetchJson('/api/system').then(renderSystem).catch(() => {});
+      fetchJson('/api/network').then(renderNetwork).catch(() => {});
+      connectEvents({ system: renderSystem, network: renderNetwork });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "processes": [
+    { "pid": 4821, "user": "gabbytee", "cpu": 18.2, "memPercent": 7.3, "memMB": 1204, "name": "Google Chrome" },
+    { "pid": 512, "user": "root", "cpu": 9.0, "memPercent": 1.2, "memMB": 198, "name": "coreaudiod" },
+    { "pid": 1200, "user": "gabbytee", "cpu": 5.5, "memPercent": 3.1, "memMB": 510, "name": "Music" },
+    { "pid": 2048, "user": "gabbytee", "cpu": 3.2, "memPercent": 12.5, "memMB": 2048, "name": "Electron" },
+    { "pid": 330, "user": "root", "cpu": 0.4, "memPercent": 0.6, "memMB": 98, "name": "launchd" }
+  ],
+  "source": "mac-native"
+}

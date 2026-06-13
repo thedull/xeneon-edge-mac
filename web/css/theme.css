@@ -1,0 +1,71 @@
+/* theme.css — design tokens for the Xeneon Edge dashboard (dark, high-contrast,
+   tuned for a glossy 2560x720 panel viewed at arm's length). */
+:root {
+  --bg: #06070a;
+  --bg-elev: #0d0f15;
+  --card: #11141c;
+  --card-2: #161a24;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --ink: #f4f6fb;
+  --ink-dim: #9aa3b2;
+  --ink-faint: rgba(255, 255, 255, 0.1);
+
+  --accent: #5bc8ff;
+  --accent-cpu: #5bc8ff;
+  --accent-ram: #a98bff;
+  --accent-disk: #ffb347;
+  --accent-net-down: #57e08e;
+  --accent-net-up: #ff6f91;
+
+  --warn: #ffb347;
+  --danger: #ff4d6d;
+  --good: #57e08e;
+
+  --radius: 18px;
+  --radius-sm: 12px;
+  --touch: 64px; /* minimum touch target */
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  height: 100%;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Ensure the HTML `hidden` attribute wins over component display rules
+   (e.g. .media { display: grid }). */
+[hidden] {
+  display: none !important;
+}

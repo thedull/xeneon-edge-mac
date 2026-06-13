@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Usage</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/widgets.css" />
+  </head>
+  <body>
+    <div class="widget" data-widget="ai-usage">
+      <div class="widget-head">
+        <span class="widget-title">AI Usage</span>
+        <span class="widget-sub">Total <span data-field="total">$0.00</span></span>
+      </div>
+      <div class="status-banner hidden" data-field="banner"></div>
+      <div class="provider-grid" data-field="grid"></div>
+    </div>
+    <script type="module">
+      import { fetchJson, connectEvents } from '../js/host-bridge.js';
+
+      const root = document.querySelector('[data-widget="ai-usage"]');
+      const grid = document.querySelector('[data-field="grid"]');
+      const banner = document.querySelector('[data-field="banner"]');
+      const total = document.querySelector('[data-field="total"]');
+      const esc = (s) => {
+        const d = document.createElement('div');
+        d.textContent = s ?? '';
+        return d.innerHTML;
+      };
+      const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+
+      function render(d) {
+        if (!d || d.available === false) {
+          banner.classList.remove('hidden');
+          banner.textContent = d?.reason || 'ai-usage-monitor unavailable';
+          grid.replaceChildren();
+          root.dataset.ready = 'true';
+          return;
+        }
+        banner.classList.add('hidden');
+        total.textContent = money(d.totalSpendUSD);
+        grid.replaceChildren();
+        for (const p of d.providers || []) {
+          const card = document.createElement('div');
+          card.className = 'provider';
+          card.dataset.provider = p.provider;
+          card.innerHTML =
+            `<span class="kicker">${esc(p.provider)}</span>` +
+            `<span class="spend">${money(p.spendUSD)}</span>` +
+            `<span class="tokens">${fmt(p.tokensIn)} in · ${fmt(p.tokensOut)} out · ${fmt(p.requests)} req</span>` +
+            `<span class="tokens">${esc(p.window || 'today')}</span>`;
+          grid.appendChild(card);
+        }
+        root.dataset.ready = 'true';
+      }
+
+      function fmt(n) {
+        n = Number(n || 0);
+        if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+        return String(n);
+      }
+
+      fetchJson('/api/ai-usage').then(render).catch(() => render(null));
+      connectEvents({ 'ai-usage': render });
+    </script>
+  </body>
+</html>

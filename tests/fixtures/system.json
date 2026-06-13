@@ -1,0 +1,11 @@
+{
+  "cpu": 34,
+  "ram": 61,
+  "ramUsedMB": 9842,
+  "ramTotalMB": 16384,
+  "disk": 74,
+  "cpuTemp": null,
+  "gpuTemp": null,
+  "topProcesses": [],
+  "source": "mac-native"
+}
