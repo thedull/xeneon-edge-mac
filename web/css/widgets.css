@@ -462,7 +462,13 @@
   font-size: 1.1rem;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+}
+/* icon-only buttons stay a clean circle (no text to fill the min-width) */
+.yt-btn[data-action='playpause'] {
+  padding: 0;
+  width: var(--touch);
 }
 .yt-search {
   position: absolute;
