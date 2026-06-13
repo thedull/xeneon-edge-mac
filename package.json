@@ -9,6 +9,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "kiosk": "XEM_KIOSK=1 electron .",
     "dev": "node scripts/dev.mjs",
     "kiosk:primary": "node scripts/kiosk-on-primary.mjs",
     "mock:ai": "node mock/ai-usage-server.mjs",

@@ -9,71 +9,92 @@
   </head>
   <body>
     <div class="widget" data-widget="system">
-      <div class="widget-head">
-        <span class="widget-title">System</span>
-        <span class="widget-sub" data-field="source"></span>
-      </div>
-      <div class="metric-grid">
-        <div class="metric" data-key="cpu">
-          <span class="metric-label">CPU</span>
-          <div class="metric-value"><span data-field="cpu">--</span><span class="unit">%</span></div>
-          <div class="bar"><span data-bar="cpu"></span></div>
-        </div>
-        <div class="metric" data-key="ram">
-          <span class="metric-label">Memory</span>
-          <div class="metric-value"><span data-field="ram">--</span><span class="unit">%</span></div>
-          <div class="metric-detail" data-field="ramDetail">--</div>
-          <div class="bar"><span data-bar="ram"></span></div>
-        </div>
-        <div class="metric" data-key="disk">
-          <span class="metric-label">Disk</span>
-          <div class="metric-value"><span data-field="disk">--</span><span class="unit">%</span></div>
-          <div class="bar"><span data-bar="disk"></span></div>
-        </div>
-        <div class="metric" data-key="net">
-          <span class="metric-label">Network</span>
-          <div class="net-row">
-            <span class="net down"><span class="arrow">&#9660;</span><span data-field="down">--</span></span>
-            <span class="net up"><span class="arrow">&#9650;</span><span data-field="up">--</span></span>
+      <div class="chart-grid">
+        <div class="chart-card" data-metric="cpu">
+          <div class="chart-head">
+            <span class="chart-label">CPU</span>
+            <span class="chart-value"><span data-field="cpu">--</span>%</span>
           </div>
+          <div class="chart-canvas"><canvas></canvas></div>
+        </div>
+        <div class="chart-card" data-metric="mem">
+          <div class="chart-head">
+            <span class="chart-label">Memory Used</span>
+            <span class="chart-value"><span data-field="ram">--</span></span>
+          </div>
+          <div class="chart-canvas"><canvas></canvas></div>
+        </div>
+        <div class="chart-card" data-metric="disk">
+          <div class="chart-head">
+            <span class="chart-label">Disk</span>
+            <span class="chart-value"><span data-field="disk">--</span>%</span>
+          </div>
+          <div class="chart-canvas"><canvas></canvas></div>
+        </div>
+        <div class="chart-card" data-metric="net">
+          <div class="chart-head">
+            <span class="chart-label">Network</span>
+            <span class="chart-value net-pair">
+              <span class="net down">&#9660;<span data-field="down">--</span></span>
+              <span class="net up">&#9650;<span data-field="up">--</span></span>
+            </span>
+          </div>
+          <div class="chart-canvas"><canvas></canvas></div>
         </div>
       </div>
     </div>
     <script type="module">
       import { fetchJson, connectEvents } from '../js/host-bridge.js';
+      import { AreaChart, humanRate } from '../js/chart.js';
 
       const root = document.querySelector('[data-widget="system"]');
-      const setVal = (field, val) => {
-        const e = document.querySelector(`[data-field="${field}"]`);
-        if (e) e.textContent = val;
+      const canvas = (m) => document.querySelector(`[data-metric="${m}"] canvas`);
+      const setVal = (f, v) => {
+        const e = document.querySelector(`[data-field="${f}"]`);
+        if (e) e.textContent = v;
       };
-      const setBar = (key, pct) => {
-        const e = document.querySelector(`[data-bar="${key}"]`);
-        if (e) e.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+
+      const charts = {
+        cpu: new AreaChart(canvas('cpu'), { label: 'CPU %', unit: '%', color: '#57e08e', min: 0, max: 100 }),
+        mem: new AreaChart(canvas('mem'), { label: 'Memory Used', unit: 'GB', color: '#5bc8ff', min: 0, format: (v) => v.toFixed(0) }),
+        disk: new AreaChart(canvas('disk'), { label: 'Disk %', unit: '%', color: '#ffb347', min: 0, max: 100 }),
+        net: new AreaChart(canvas('net'), { label: 'Down', unit: 'B/s', color: '#a98bff', min: 0, format: humanRate }),
       };
-      const fmtGB = (mb) => (mb != null ? `${(mb / 1024).toFixed(1)} GB` : '--');
+
+      // test/inspection hooks
+      const probe = { cpu: null, ramUsedGB: null, disk: null, down: null, up: null, samples: 0 };
+      window.__system = probe;
+      window.__charts = charts;
 
       function renderSystem(d) {
         if (d.cpu != null) {
           setVal('cpu', Math.round(d.cpu));
-          setBar('cpu', d.cpu);
+          charts.cpu.push(d.cpu);
+          probe.cpu = d.cpu;
         }
-        if (d.ram != null) {
-          setVal('ram', Math.round(d.ram));
-          setBar('ram', d.ram);
-          setVal('ramDetail', `${fmtGB(d.ramUsedMB)} / ${fmtGB(d.ramTotalMB)}`);
+        if (d.ramUsedMB != null) {
+          const usedGB = d.ramUsedMB / 1024;
+          const totalGB = (d.ramTotalMB || 0) / 1024;
+          if (totalGB) charts.mem.max = Math.ceil(totalGB);
+          setVal('ram', `${usedGB.toFixed(1)} / ${totalGB.toFixed(0)} GB`);
+          charts.mem.push(usedGB);
+          probe.ramUsedGB = usedGB;
         }
         if (d.disk != null) {
           setVal('disk', Math.round(d.disk));
-          setBar('disk', d.disk);
+          charts.disk.push(d.disk);
+          probe.disk = d.disk;
         }
-        if (d.source) setVal('source', d.source);
+        probe.samples += 1;
         root.dataset.ready = 'true';
       }
 
       function renderNetwork(d) {
         setVal('down', d.downloadHuman || '0 B/s');
         setVal('up', d.uploadHuman || '0 B/s');
+        charts.net.push(d.download || 0);
+        probe.down = d.download;
+        probe.up = d.upload;
       }
 
       fetchJson('/api/system').then(renderSystem).catch(() => {});

@@ -16,6 +16,8 @@ import { parseNetstat } from '../../src/server/collectors/network.mjs';
 import { parsePs, topByCpu } from '../../src/server/collectors/processes.mjs';
 import { parseMusicOutput } from '../../src/server/collectors/media.mjs';
 import { normalizeUsage } from '../../src/server/collectors/ai-usage.mjs';
+import { parseYouTubeResults } from '../../src/server/collectors/youtube.mjs';
+import { isEdgeDisplay, findEdgeDisplay } from '../../src/display-match.cjs';
 import { humanRate } from '../../src/server/collectors/_exec.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -99,6 +101,41 @@ test('normalizeUsage maps alternate field names and totals spend', () => {
   assert.equal(out.providers[0].tokensIn, 100);
   assert.equal(out.providers[1].provider, 'openrouter');
   assert.equal(out.totalSpendUSD, 6); // 4.1 + 1.9
+});
+
+test('parseYouTubeResults scrapes videoRenderers from ytInitialData', () => {
+  const items = parseYouTubeResults(fixture('youtube-results.html'));
+  assert.equal(items.length, 2); // promotedVideoRenderer ignored
+  assert.deepEqual(items[0], {
+    id: 'abc123',
+    title: 'Test Song',
+    channel: 'Test Channel',
+    thumb: 'thumb-large', // last (largest) thumbnail
+    duration: '3:45',
+  });
+  assert.equal(items[1].id, 'def456');
+  assert.equal(items[1].channel, 'Chan2'); // longBylineText fallback
+});
+
+test('parseYouTubeResults is safe on garbage input', () => {
+  assert.deepEqual(parseYouTubeResults('<html>no data here</html>'), []);
+});
+
+test('isEdgeDisplay matches the Edge by points, native pixels, and aspect', () => {
+  // exact in points
+  assert.equal(isEdgeDisplay({ size: { width: 2560, height: 720 }, scaleFactor: 1 }), true);
+  // native pixels via HiDPI scaleFactor 2 (1280x360 points)
+  assert.equal(isEdgeDisplay({ size: { width: 1280, height: 360 }, scaleFactor: 2 }), true);
+  // aspect-ratio fallback (slightly off resolution, external)
+  assert.equal(isEdgeDisplay({ size: { width: 2552, height: 718 }, scaleFactor: 1, internal: false }), true);
+  // a normal laptop display is NOT the Edge
+  assert.equal(isEdgeDisplay({ size: { width: 1512, height: 982 }, scaleFactor: 2, internal: true }), false);
+
+  // findEdgeDisplay prefers the exact match among several displays
+  const laptop = { id: 1, size: { width: 1512, height: 982 }, scaleFactor: 2, internal: true };
+  const edge = { id: 2, size: { width: 2560, height: 720 }, scaleFactor: 1, internal: false };
+  assert.equal(findEdgeDisplay([laptop, edge]).id, 2);
+  assert.equal(findEdgeDisplay([laptop]), null);
 });
 
 test('humanRate formats byte rates', () => {

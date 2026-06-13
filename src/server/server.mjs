@@ -68,7 +68,11 @@ function startBackgroundCollectors(sse) {
   };
   timers.push(setInterval(safe(collectSystem, 'system'), 1000));
   timers.push(setInterval(safe(collectNetwork, 'network'), 1000));
-  timers.push(setInterval(safe(collectMedia, 'media'), 3000));
+  // XEM_DISABLE_MEDIA skips Apple Music polling (avoids the macOS Automation
+  // prompt during headless dev / screenshots).
+  if (process.env.XEM_DISABLE_MEDIA !== '1') {
+    timers.push(setInterval(safe(collectMedia, 'media'), 3000));
+  }
   timers.push(setInterval(safe(collectAiUsage, 'ai-usage'), 5000));
   timers.push(setInterval(() => sse.broadcast('ping', { ts: Date.now() }), 15000));
   for (const t of timers) t.unref?.();

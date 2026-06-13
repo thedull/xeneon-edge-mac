@@ -1,23 +1,29 @@
 import { test, expect } from '@playwright/test';
 
-test('renders fixture system + network stats with bars', async ({ page }) => {
+test('renders area charts + headers from fixture data', async ({ page }) => {
   await page.goto('/widgets/system-monitor.html');
   await expect(page.locator('[data-widget="system"]')).toHaveAttribute('data-ready', 'true');
 
+  // four metric charts, each with a canvas
+  await expect(page.locator('.chart-card')).toHaveCount(4);
+  await expect(page.locator('.chart-card canvas')).toHaveCount(4);
+
+  // header values
   await expect(page.locator('[data-field="cpu"]')).toHaveText('34');
-  await expect(page.locator('[data-field="ram"]')).toHaveText('61');
   await expect(page.locator('[data-field="disk"]')).toHaveText('74');
-  await expect(page.locator('[data-field="ramDetail"]')).toContainText('GB');
-
-  await expect(page.locator('[data-bar="cpu"]')).toHaveAttribute('style', /width:\s*34%/);
-  await expect(page.locator('[data-bar="disk"]')).toHaveAttribute('style', /width:\s*74%/);
-
+  await expect(page.locator('[data-field="ram"]')).toContainText('9.6'); // GB used
+  await expect(page.locator('[data-field="ram"]')).toContainText('GB');
   await expect(page.locator('[data-field="down"]')).toHaveText('1.19 MB/s');
   await expect(page.locator('[data-field="up"]')).toHaveText('86 KB/s');
+
+  // charts received data (probe hook)
+  const probe = await page.evaluate(() => window.__system);
+  expect(probe.cpu).toBe(34);
+  expect(probe.disk).toBe(74);
+  expect(probe.samples).toBeGreaterThan(0);
 });
 
 test('fills values from the SSE stream when the initial fetch is unavailable', async ({ page }) => {
-  // Block the one-shot GET so only the SSE 'system' broadcast can populate the UI.
   await page.route('**/api/system', (route) => route.abort());
   await page.goto('/widgets/system-monitor.html');
   await expect(page.locator('[data-field="cpu"]')).toHaveText('34', { timeout: 8000 });

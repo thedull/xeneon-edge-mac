@@ -1,23 +1,17 @@
-// display.cjs — locate the Xeneon Edge (2560x720) among connected displays and
-// resolve the kiosk window target. Falls back to a 2560x720 window on the
-// primary display (for development/demo without the physical Edge).
+// display.cjs — locate the Xeneon Edge among connected displays and resolve the
+// kiosk window target, using the live Electron `screen` API. Pure matching logic
+// lives in display-match.cjs (unit-tested without Electron).
 const { screen } = require('electron');
-
-const EDGE_W = 2560;
-const EDGE_H = 720;
+const {
+  isEdgeDisplay,
+  findEdgeDisplay: matchEdge,
+  edgeWindowOnPrimary,
+  EDGE_W,
+  EDGE_H,
+} = require('./display-match.cjs');
 
 function findEdgeDisplay() {
-  const displays = screen.getAllDisplays();
-  return (
-    displays.find((d) => d.size.width === EDGE_W && d.size.height === EDGE_H) || null
-  );
-}
-
-function edgeWindowOnPrimary(primary) {
-  // Place a 2560x720 window at the primary's work-area origin so the layout
-  // renders at the true target resolution even on a smaller laptop screen.
-  const wa = primary.workArea;
-  return { x: wa.x, y: wa.y, width: EDGE_W, height: EDGE_H };
+  return matchEdge(screen.getAllDisplays());
 }
 
 // { display, bounds, found, forced }
@@ -46,4 +40,12 @@ function displayInfo(target) {
   };
 }
 
-module.exports = { findEdgeDisplay, resolveTarget, displayInfo, EDGE_W, EDGE_H };
+module.exports = {
+  isEdgeDisplay,
+  findEdgeDisplay,
+  resolveTarget,
+  displayInfo,
+  edgeWindowOnPrimary,
+  EDGE_W,
+  EDGE_H,
+};

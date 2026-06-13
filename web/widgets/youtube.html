@@ -31,7 +31,7 @@
     </div>
 
     <script type="module">
-      import { getConfig } from '../js/config.js';
+      import { fetchJson } from '../js/host-bridge.js';
       import { attachKeyboard } from '../js/keyboard.js';
 
       const root = document.querySelector('[data-widget="youtube"]');
@@ -95,24 +95,15 @@
       async function search(query) {
         const term = (query || '').trim();
         if (!term) return;
-        const key = getConfig('ytkey', '');
-        if (!key) {
-          results.innerHTML =
-            '<div class="status-banner">Add a YouTube Data API key (?ytkey=… or saved config) to search.</div>';
-          return;
-        }
-        const url =
-          'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video' +
-          `&videoEmbeddable=true&maxResults=8&q=${encodeURIComponent(term)}&key=${encodeURIComponent(key)}`;
+        results.innerHTML = '<div class="status-banner">Searching…</div>';
         try {
-          const res = await fetch(url);
-          const data = await res.json();
-          state.results = (data.items || []).map((it) => ({
-            id: it.id?.videoId,
-            title: it.snippet?.title,
-            channel: it.snippet?.channelTitle,
-            thumb: it.snippet?.thumbnails?.medium?.url || '',
-          }));
+          // Keyless: the host scrapes YouTube's public results page.
+          const data = await fetchJson(`/api/youtube/search?q=${encodeURIComponent(term)}`);
+          state.results = data.items || [];
+          if (!state.results.length) {
+            results.innerHTML = '<div class="status-banner">No results — try another search.</div>';
+            return;
+          }
           renderResults();
         } catch {
           results.innerHTML = '<div class="status-banner">Search failed.</div>';

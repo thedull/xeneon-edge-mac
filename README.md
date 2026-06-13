@@ -47,8 +47,9 @@ npm install
 XEM_FIXTURES=1 npm run dev      # → http://127.0.0.1:8787/dashboard.html
 
 # Full Electron app on the Edge (or primary @2560x720 if the Edge isn't attached):
-npm start
-npm run kiosk:primary           # force the kiosk window onto the primary display
+npm start                       # framed window (traffic-light controls), auto-targets the Edge
+npm run kiosk                   # true fullscreen, no chrome / no menu (XEM_KIOSK=1)
+npm run kiosk:primary           # force the window onto the primary display (no Edge needed)
 
 # Mock the (not-yet-built) ai-usage-monitor so the AI widget is demoable:
 npm run mock:ai
@@ -68,10 +69,16 @@ skipped with `XEM_SKIP_ELECTRON=1`.
 
 ## Feature status (MoSCoW)
 
-- **Must** — YouTube player + collapsible search ✓ · System stats (RAM/CPU/disk/net) ✓
+- **Must** — YouTube player + collapsible search (**keyless** — host scrapes results, no API key) ✓ · System stats as **live area charts** (CPU%, real Memory Used via `vm_stat`, Disk%, network) ✓
 - **Should** — Apple Music miniplayer + volume ✓
 - **Could** — Top processes ✓
 - **Would** — ai-usage-monitor integration (+ mock) ✓ · community `.icuewidget` shim (planned)
+
+## Display & window modes
+
+- The app **auto-targets the Edge** (matched by 2560×720 in points or native pixels, or 32:9 aspect) and re-pins to it on hotplug — no manual moving.
+- Default window is **framed** (movable/resizable, traffic-light controls). `npm run kiosk` (or `XEM_KIOSK=1`) runs true fullscreen with no chrome/menu.
+- `XEM_DISABLE_MEDIA=1` skips Apple Music polling (avoids the Automation prompt during headless dev).
 
 ## Roadmap
 

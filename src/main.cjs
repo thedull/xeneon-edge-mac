@@ -7,6 +7,9 @@ const { resolveTarget, displayInfo } = require('./display.cjs');
 
 const FORCE_PRIMARY =
   process.env.XEM_FORCE_PRIMARY === '1' || process.argv.includes('--kiosk-primary');
+// Kiosk = true fullscreen, no window chrome, no menu. Default = a normal framed
+// window with the macOS traffic-light controls (movable / resizable).
+const KIOSK = process.env.XEM_KIOSK === '1' || process.argv.includes('--kiosk');
 
 let serverHandle = null;
 let win = null;
@@ -29,8 +32,11 @@ function createWindow(target, baseUrl) {
     y: b.y,
     width: b.width,
     height: b.height,
-    frame: false,
-    fullscreen: target.found, // true OS-fullscreen only on the real Edge
+    title: 'Xeneon Edge',
+    frame: !KIOSK, // framed (traffic lights) by default; borderless in kiosk
+    resizable: true,
+    fullscreenable: true,
+    kiosk: KIOSK, // true fullscreen, no menu, in kiosk mode
     backgroundColor: '#000000',
     autoHideMenuBar: true,
     webPreferences: {
@@ -46,15 +52,20 @@ function createWindow(target, baseUrl) {
   });
 }
 
+// Keep the window pinned to the Edge whenever displays change (hotplug, etc.).
 function retarget(baseUrl) {
   const next = resolveTarget({ forcePrimary: FORCE_PRIMARY });
   currentTarget = next;
-  if (win) {
-    win.setFullScreen(false);
-    win.setBounds(next.bounds);
-    if (next.found) win.setFullScreen(true);
-  } else {
+  if (!win) {
     createWindow(next, baseUrl);
+    return;
+  }
+  if (KIOSK) {
+    win.setKiosk(false);
+    win.setBounds(next.bounds);
+    win.setKiosk(true);
+  } else {
+    win.setBounds(next.bounds);
   }
 }
 

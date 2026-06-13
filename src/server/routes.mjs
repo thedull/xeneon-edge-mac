@@ -114,6 +114,16 @@ export async function handleApi(req, res, url, ctx = {}) {
       }
       case pathname === '/api/ai-usage':
         return ok(res, await collectAiUsage());
+      case pathname === '/api/youtube/search': {
+        const q = url.searchParams.get('q') || '';
+        if (!q.trim()) return ok(res, { items: [], source: 'youtube-scrape', ts: Date.now() });
+        const { search } = await import('./collectors/youtube.mjs');
+        try {
+          return ok(res, { items: await search(q), source: 'youtube-scrape', ts: Date.now() });
+        } catch (err) {
+          return ok(res, { items: [], error: err.message, source: 'youtube-scrape', ts: Date.now() });
+        }
+      }
       default:
         sendJson(res, 404, { error: `no route: ${req.method} ${pathname}` });
         return true;
