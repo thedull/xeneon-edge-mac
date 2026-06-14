@@ -38,9 +38,16 @@ function findEdgeDisplay(displays = []) {
   return displays.find(isExactEdge) || displays.find(isEdgeDisplay) || null;
 }
 
+// Fallback window when the real Edge isn't attached: fit a 2560x720 (32:9) box
+// inside the primary's work area, preserving aspect. Without this clamp the
+// window stays a fixed 2560x720 and a smaller panel (e.g. the laptop display)
+// clips it on the right/bottom before the stage can scale to fit.
 function edgeWindowOnPrimary(primary) {
   const wa = primary.workArea;
-  return { x: wa.x, y: wa.y, width: EDGE_W, height: EDGE_H };
+  const scale = Math.min(1, wa.width / EDGE_W, wa.height / EDGE_H);
+  const width = Math.round(EDGE_W * scale);
+  const height = Math.round(EDGE_H * scale);
+  return { x: wa.x, y: wa.y, width, height };
 }
 
 module.exports = { isEdgeDisplay, findEdgeDisplay, edgeWindowOnPrimary, EDGE_W, EDGE_H };

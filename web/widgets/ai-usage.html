@@ -13,7 +13,12 @@
         <span class="widget-title">AI Usage</span>
         <span class="widget-sub">Total <span data-field="total">$0.00</span></span>
       </div>
-      <div class="status-banner hidden" data-field="banner"></div>
+      <div class="ai-empty hidden" data-field="empty">
+        <span class="ai-empty-icon" aria-hidden="true">&#9888;</span>
+        <span class="ai-empty-title">Not Connected</span>
+        <button class="ai-more" data-field="moreBtn" type="button">More&hellip;</button>
+        <div class="ai-detail hidden" data-field="detail"></div>
+      </div>
       <div class="provider-grid" data-field="grid"></div>
     </div>
     <script type="module">
@@ -21,8 +26,16 @@
 
       const root = document.querySelector('[data-widget="ai-usage"]');
       const grid = document.querySelector('[data-field="grid"]');
-      const banner = document.querySelector('[data-field="banner"]');
+      const empty = document.querySelector('[data-field="empty"]');
+      const detail = document.querySelector('[data-field="detail"]');
+      const moreBtn = document.querySelector('[data-field="moreBtn"]');
       const total = document.querySelector('[data-field="total"]');
+
+      // "More…" reveals the underlying connection error.
+      moreBtn.addEventListener('click', () => {
+        const nowHidden = detail.classList.toggle('hidden');
+        moreBtn.textContent = nowHidden ? 'More…' : 'Less';
+      });
       const esc = (s) => {
         const d = document.createElement('div');
         d.textContent = s ?? '';
@@ -32,13 +45,14 @@
 
       function render(d) {
         if (!d || d.available === false) {
-          banner.classList.remove('hidden');
-          banner.textContent = d?.reason || 'ai-usage-monitor unavailable';
+          empty.classList.remove('hidden');
+          detail.textContent = d?.reason || 'ai-usage-monitor unavailable';
           grid.replaceChildren();
+          total.textContent = money(0);
           root.dataset.ready = 'true';
           return;
         }
-        banner.classList.add('hidden');
+        empty.classList.add('hidden');
         total.textContent = money(d.totalSpendUSD);
         grid.replaceChildren();
         for (const p of d.providers || []) {

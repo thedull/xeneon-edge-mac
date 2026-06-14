@@ -34,6 +34,10 @@ function createWindow(target, baseUrl) {
     height: b.height,
     title: 'Xeneon Edge',
     frame: !KIOSK, // framed (traffic lights) by default; borderless in kiosk
+    // Framed mode keeps the traffic-light controls but drops the title bar, so
+    // the dashboard fills the full 2560x720 instead of losing ~28px (which made
+    // scale.js letterbox the right edge). Kiosk is already chromeless.
+    titleBarStyle: KIOSK ? 'default' : 'hiddenInset',
     resizable: true,
     fullscreenable: true,
     kiosk: KIOSK, // true fullscreen, no menu, in kiosk mode
@@ -43,10 +47,15 @@ function createWindow(target, baseUrl) {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Let the embedded YouTube player autoplay the selected video.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
   // Pass the API origin so widgets (and child iframes) resolve the same server.
-  win.loadURL(`${baseUrl}/dashboard.html?api=${encodeURIComponent(baseUrl)}`);
+  // chrome=framed lets the dashboard reserve the top-left for the (now
+  // title-bar-less) traffic-light controls. Kiosk has no chrome.
+  const chrome = KIOSK ? '' : '&chrome=framed';
+  win.loadURL(`${baseUrl}/dashboard.html?api=${encodeURIComponent(baseUrl)}${chrome}`);
   win.on('closed', () => {
     win = null;
   });

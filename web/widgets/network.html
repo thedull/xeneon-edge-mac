@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Network</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/widgets.css" />
+  </head>
+  <body>
+    <div class="widget" data-widget="network">
+      <div class="widget-head">
+        <span class="widget-title">Network</span>
+        <span class="widget-sub net-pair">
+          <span class="net down">&#9660;<span data-field="down">--</span></span>
+          <span class="net up">&#9650;<span data-field="up">--</span></span>
+        </span>
+      </div>
+      <div class="chart-canvas net-canvas"><canvas></canvas></div>
+    </div>
+    <script type="module">
+      import { fetchJson, connectEvents } from '../js/host-bridge.js';
+      import { AreaChart, humanRate } from '../js/chart.js';
+
+      const root = document.querySelector('[data-widget="network"]');
+      const setVal = (f, v) => {
+        const e = document.querySelector(`[data-field="${f}"]`);
+        if (e) e.textContent = v;
+      };
+
+      // Download on the left axis (filled), upload on the right axis (line).
+      const chart = new AreaChart(document.querySelector('canvas'), {
+        label: 'Down',
+        unit: 'B/s',
+        color: '#57e08e',
+        min: 0,
+        format: humanRate,
+        series2: { color: '#ff6f91', unit: 'Up', format: humanRate, min: 0 },
+      });
+      window.__network = { chart, down: null, up: null };
+
+      function render(d) {
+        setVal('down', d.downloadHuman || '0 B/s');
+        setVal('up', d.uploadHuman || '0 B/s');
+        chart.pushPair(d.download || 0, d.upload || 0);
+        window.__network.down = d.download;
+        window.__network.up = d.upload;
+        root.dataset.ready = 'true';
+      }
+
+      fetchJson('/api/network').then(render).catch(() => {});
+      connectEvents({ network: render });
+    </script>
+  </body>
+</html>

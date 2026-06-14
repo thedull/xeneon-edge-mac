@@ -27,17 +27,7 @@
         <div class="chart-card" data-metric="disk">
           <div class="chart-head">
             <span class="chart-label">Disk</span>
-            <span class="chart-value"><span data-field="disk">--</span>%</span>
-          </div>
-          <div class="chart-canvas"><canvas></canvas></div>
-        </div>
-        <div class="chart-card" data-metric="net">
-          <div class="chart-head">
-            <span class="chart-label">Network</span>
-            <span class="chart-value net-pair">
-              <span class="net down">&#9660;<span data-field="down">--</span></span>
-              <span class="net up">&#9650;<span data-field="up">--</span></span>
-            </span>
+            <span class="chart-value"><span data-field="diskTotal">--</span></span>
           </div>
           <div class="chart-canvas"><canvas></canvas></div>
         </div>
@@ -45,7 +35,7 @@
     </div>
     <script type="module">
       import { fetchJson, connectEvents } from '../js/host-bridge.js';
-      import { AreaChart, humanRate } from '../js/chart.js';
+      import { AreaChart, Gauge } from '../js/chart.js';
 
       const root = document.querySelector('[data-widget="system"]');
       const canvas = (m) => document.querySelector(`[data-metric="${m}"] canvas`);
@@ -57,12 +47,12 @@
       const charts = {
         cpu: new AreaChart(canvas('cpu'), { label: 'CPU %', unit: '%', color: '#57e08e', min: 0, max: 100 }),
         mem: new AreaChart(canvas('mem'), { label: 'Memory Used', unit: 'GB', color: '#5bc8ff', min: 0, format: (v) => v.toFixed(0) }),
-        disk: new AreaChart(canvas('disk'), { label: 'Disk %', unit: '%', color: '#ffb347', min: 0, max: 100 }),
-        net: new AreaChart(canvas('net'), { label: 'Down', unit: 'B/s', color: '#a98bff', min: 0, format: humanRate }),
+        // Disk is a radial gauge: % in the center, colored by threshold.
+        disk: new Gauge(canvas('disk'), { min: 0, max: 100 }),
       };
 
       // test/inspection hooks
-      const probe = { cpu: null, ramUsedGB: null, disk: null, down: null, up: null, samples: 0 };
+      const probe = { cpu: null, ramUsedGB: null, disk: null, samples: 0 };
       window.__system = probe;
       window.__charts = charts;
 
@@ -81,25 +71,16 @@
           probe.ramUsedGB = usedGB;
         }
         if (d.disk != null) {
-          setVal('disk', Math.round(d.disk));
-          charts.disk.push(d.disk);
+          if (d.diskTotalGB) setVal('diskTotal', `${d.diskTotalGB} GB`);
+          charts.disk.set(d.disk);
           probe.disk = d.disk;
         }
         probe.samples += 1;
         root.dataset.ready = 'true';
       }
 
-      function renderNetwork(d) {
-        setVal('down', d.downloadHuman || '0 B/s');
-        setVal('up', d.uploadHuman || '0 B/s');
-        charts.net.push(d.download || 0);
-        probe.down = d.download;
-        probe.up = d.upload;
-      }
-
       fetchJson('/api/system').then(renderSystem).catch(() => {});
-      fetchJson('/api/network').then(renderNetwork).catch(() => {});
-      connectEvents({ system: renderSystem, network: renderNetwork });
+      connectEvents({ system: renderSystem });
     </script>
   </body>
 </html>

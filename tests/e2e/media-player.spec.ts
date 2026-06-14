@@ -48,6 +48,38 @@ test('transport + volume controls issue the right requests', async ({ page }) =>
   expect(volReq.postDataJSON()).toEqual({ volume: 30 });
 });
 
+test('dragging the progress bar seeks (POST /api/media/seek)', async ({ page }) => {
+  await page.route('**/api/media/seek', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        available: true,
+        playerState: 'playing',
+        title: 'Redbone',
+        artist: 'Childish Gambino',
+        artworkId: '12345',
+        positionSec: 163,
+        durationSec: 326,
+        volume: 62,
+        source: 'apple-music',
+        ts: Date.now(),
+      }),
+    }),
+  );
+
+  await page.goto('/widgets/media-player.html');
+  await expect(page.locator('[data-field="title"]')).toHaveText('Redbone');
+
+  const [seekReq] = await Promise.all([
+    page.waitForRequest((r) => r.url().includes('/api/media/seek') && r.method() === 'POST'),
+    page.locator('[data-field="progressbar"]').click(), // center → ~50%
+  ]);
+  const body = seekReq.postDataJSON();
+  // center of a 326s track ≈ 163s; assert it seeked into the track
+  expect(body.positionSec).toBeGreaterThan(0);
+  expect(body.positionSec).toBeLessThanOrEqual(326);
+});
+
 test('shows the empty state when nothing is playing', async ({ page }) => {
   await page.route('**/api/media', (route) =>
     route.fulfill({

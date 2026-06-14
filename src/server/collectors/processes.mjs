@@ -42,21 +42,33 @@ export function topByCpu(rows, limit = 10) {
     .slice(0, limit);
 }
 
+export function topByMem(rows, limit = 10) {
+  return [...rows]
+    .sort((a, b) => b.memPercent - a.memPercent || b.cpu - a.cpu)
+    .slice(0, limit);
+}
+
+// Pick the sorter for a ?sort= value (defaults to CPU). Always descending.
+function sorterFor(sort) {
+  return sort === 'mem' ? topByMem : topByCpu;
+}
+
 // ---- live collection ----
 
-export async function collect(limit = 10) {
+export async function collect(limit = 10, sort = 'cpu') {
+  const order = sorterFor(sort);
   if (USE_FIXTURES) {
     const snap = await fixtureJson('processes.json');
-    return { ...snap, processes: snap.processes.slice(0, limit), limit, ts: now() };
+    return { ...snap, processes: order(snap.processes, limit), limit, sort, ts: now() };
   }
   let processes = [];
   try {
     const raw = await source('ps.txt', () =>
       sh('ps -axo pid=,user=,%cpu=,%mem=,comm='),
     );
-    processes = topByCpu(parsePs(raw), limit);
+    processes = order(parsePs(raw), limit);
   } catch {
     processes = [];
   }
-  return { processes, limit, source: 'mac-native', ts: now() };
+  return { processes, limit, sort, source: 'mac-native', ts: now() };
 }

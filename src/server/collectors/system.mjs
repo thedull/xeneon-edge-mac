@@ -19,6 +19,16 @@ export function parseDfCapacity(raw) {
   return Number.parseInt(pctCol, 10);
 }
 
+// `df -k /` → total size of the root volume in GiB (the 1024-blocks column).
+export function parseDfTotalGB(raw) {
+  const lines = raw.trim().split('\n');
+  if (lines.length < 2) return null;
+  const cols = lines[lines.length - 1].trim().split(/\s+/);
+  const blocks = Number.parseInt(cols[1], 10); // 1024-byte blocks (KiB)
+  if (!Number.isFinite(blocks)) return null;
+  return Math.round(blocks / 1024 / 1024);
+}
+
 // Aggregate os.cpus() times into { idle, total }.
 export function cpuTimes(cpus = os.cpus()) {
   let idle = 0;
@@ -89,12 +99,12 @@ async function ramSnapshot() {
   };
 }
 
-async function diskPercent() {
+async function diskSnapshot() {
   try {
     const raw = await source('df.txt', () => sh('df -k /'));
-    return parseDfCapacity(raw);
+    return { disk: parseDfCapacity(raw), diskTotalGB: parseDfTotalGB(raw) };
   } catch {
-    return null;
+    return { disk: null, diskTotalGB: null };
   }
 }
 
@@ -107,11 +117,11 @@ export async function collect() {
   const cpu = cpuPercentFromSamples(prevSample, sample);
   prevSample = sample;
   const ram = await ramSnapshot();
-  const disk = await diskPercent();
+  const disk = await diskSnapshot();
   return {
     cpu,
     ...ram,
-    disk,
+    ...disk,
     cpuTemp: null,
     gpuTemp: null,
     topProcesses: [],

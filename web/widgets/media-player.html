@@ -15,7 +15,9 @@
           <span class="kicker">Now Playing · Apple Music</span>
           <span class="media-title" data-field="title">--</span>
           <span class="media-artist" data-field="artist">--</span>
-          <div class="media-progress"><span data-field="progress"></span></div>
+          <div class="media-progress" data-field="progressbar" role="slider" aria-label="Seek">
+            <span data-field="progress"></span>
+          </div>
           <div class="media-times">
             <span data-field="cur">0:00</span><span data-field="dur">0:00</span>
           </div>
@@ -82,15 +84,65 @@
         $('cur').textContent = fmtTime(pos);
       }
 
-      // Smooth the progress bar between polls while playing.
+      // Smooth the progress bar between polls while playing (paused while the
+      // user is dragging to seek).
       function raf() {
-        if (last && last.available && last.playerState === 'playing' && last.durationSec > 0) {
+        if (
+          !dragging &&
+          last &&
+          last.available &&
+          last.playerState === 'playing' &&
+          last.durationSec > 0
+        ) {
           const elapsed = (performance.now() - lastTickAt) / 1000;
           updateProgress(Math.min(last.durationSec, last.positionSec + elapsed), last.durationSec);
         }
         requestAnimationFrame(raf);
       }
       requestAnimationFrame(raf);
+
+      // --- drag the progress bar to seek ---
+      const bar = $('progressbar');
+      let dragging = false;
+      const fracFromEvent = (e) => {
+        const rect = bar.getBoundingClientRect();
+        return Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width || 1)));
+      };
+      const previewSeek = (frac) => {
+        if (last && last.durationSec) updateProgress(frac * last.durationSec, last.durationSec);
+      };
+      bar.addEventListener('pointerdown', (e) => {
+        if (!last || !last.available || !last.durationSec) return;
+        dragging = true;
+        bar.setPointerCapture(e.pointerId);
+        previewSeek(fracFromEvent(e));
+      });
+      bar.addEventListener('pointermove', (e) => {
+        if (dragging) previewSeek(fracFromEvent(e));
+      });
+      bar.addEventListener('pointerup', async (e) => {
+        if (!dragging) return;
+        dragging = false;
+        const positionSec = fracFromEvent(e) * (last?.durationSec || 0);
+        try {
+          render(await postJson('/api/media/seek', { positionSec }));
+        } catch {
+          /* ignore */
+        }
+      });
+
+      // Tabbed player switched away → pause if we're playing.
+      window.addEventListener('message', async (e) => {
+        if (e.data && e.data.type === 'player:pause') {
+          if (last && last.available && last.playerState === 'playing') {
+            try {
+              render(await postJson('/api/media/playpause'));
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      });
 
       root.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');

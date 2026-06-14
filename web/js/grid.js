@@ -2,30 +2,25 @@
 // Widgets render in iframes (host-agnostic pages); the dashboard forwards its
 // own ?api= origin so child widgets resolve the same API.
 import { getConfig, setConfig } from './config.js';
+import { idleHide } from './idle-hide.js';
+import { mountPlayer } from './player-tabs.js';
 
-// Each tile positions a widget in the 2x2 (1280x360) grid via CSS grid lines.
+// The page is a 4-column grid: a 1280px player column on the left, then three
+// equal columns on the right. Tiles position via CSS grid lines.
+//   Page 1:  [ player ][ system-monitor: CPU · Mem · Disk          ]
+//            [ player ][ processes (66%)        ][ network (33%)   ]
+//   Page 2:  [ ai-usage (full) ]
 export const LAYOUTS = {
   default: {
     label: 'Default',
     pages: [
       [
-        { widget: 'youtube', col: '1', row: '1 / span 2' },
-        { widget: 'system-monitor', col: '2', row: '1' },
-        { widget: 'media-player', col: '2', row: '2' },
+        { widget: 'player', col: '1', row: '1 / span 2' },
+        { widget: 'system-monitor', col: '2 / span 3', row: '1' },
+        { widget: 'processes', col: '2 / span 2', row: '2' },
+        { widget: 'network', col: '4', row: '2' },
       ],
-      [
-        { widget: 'processes', col: '1', row: '1 / span 2' },
-        { widget: 'ai-usage', col: '2', row: '1 / span 2' },
-      ],
-    ],
-  },
-  focus: {
-    label: 'Focus',
-    pages: [
-      [
-        { widget: 'youtube', col: '1', row: '1 / span 2' },
-        { widget: 'system-monitor', col: '2', row: '1 / span 2' },
-      ],
+      [{ widget: 'ai-usage', col: '1 / -1', row: '1 / span 2' }],
     ],
   },
 };
@@ -38,10 +33,9 @@ export function initGrid(root) {
 
   const stage = el('div', 'stage');
   const pager = el('div', 'pager');
-  const dots = el('nav', 'dots');
   const prevBtn = navBtn('prev', '‹');
   const nextBtn = navBtn('next', '›');
-  stage.append(pager, prevBtn, nextBtn, dots);
+  stage.append(pager, prevBtn, nextBtn);
   root.replaceChildren(stage);
 
   function render() {
@@ -55,37 +49,30 @@ export function initGrid(root) {
         t.style.gridColumn = tile.col;
         t.style.gridRow = tile.row;
         t.dataset.widget = tile.widget;
-        const frame = document.createElement('iframe');
-        frame.className = 'tile-frame';
-        frame.setAttribute('title', tile.widget);
-        let src = `widgets/${tile.widget}.html`;
-        if (apiParam) src += `?api=${encodeURIComponent(apiParam)}`;
-        frame.src = src;
-        t.appendChild(frame);
+        if (tile.widget === 'player') {
+          // Mount the tabbed player inline so youtube.html is a direct child
+          // iframe of the dashboard (avoids the extra-nesting embed failure).
+          mountPlayer(t, { apiParam, widgetBase: 'widgets/' });
+        } else {
+          const frame = document.createElement('iframe');
+          frame.className = 'tile-frame';
+          frame.setAttribute('title', tile.widget);
+          frame.allow = 'autoplay; fullscreen; encrypted-media';
+          frame.setAttribute('allowfullscreen', '');
+          let src = `widgets/${tile.widget}.html`;
+          if (apiParam) src += `?api=${encodeURIComponent(apiParam)}`;
+          frame.src = src;
+          t.appendChild(frame);
+        }
         pageEl.appendChild(t);
       }
       pager.appendChild(pageEl);
     });
-    renderDots();
     update();
-  }
-
-  function renderDots() {
-    const preset = LAYOUTS[presetName];
-    dots.replaceChildren();
-    preset.pages.forEach((_, i) => {
-      const d = document.createElement('button');
-      d.className = 'dot';
-      d.type = 'button';
-      d.setAttribute('data-dot', String(i));
-      d.addEventListener('click', () => goTo(i));
-      dots.appendChild(d);
-    });
   }
 
   function update() {
     pager.style.transform = `translateX(${-index * 2560}px)`;
-    [...dots.children].forEach((d, i) => d.classList.toggle('active', i === index));
     const count = LAYOUTS[presetName].pages.length;
     prevBtn.style.visibility = count > 1 ? 'visible' : 'hidden';
     nextBtn.style.visibility = count > 1 ? 'visible' : 'hidden';
@@ -131,6 +118,9 @@ export function initGrid(root) {
   });
 
   render();
+
+  // Fade the nav arrows out after 30s idle; any interaction brings them back.
+  idleHide([prevBtn, nextBtn], { timeoutMs: 30000, root: stage });
 
   const api = {
     goTo,

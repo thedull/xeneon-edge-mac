@@ -12,6 +12,11 @@
     <script type="module">
       import { applyScale } from './js/scale.js';
       import { initGrid } from './js/grid.js';
+      // Framed mode drops the title bar (traffic lights float over the content);
+      // reserve their top-left corner so they don't cover the player tabs.
+      if (new URLSearchParams(location.search).get('chrome') === 'framed') {
+        document.body.classList.add('framed');
+      }
       applyScale();
       initGrid(document.getElementById('root'));
     </script>

@@ -11,7 +11,7 @@ test('renders provider cards + total from fixtures', async ({ page }) => {
   await expect(page.locator('.provider[data-provider="claude"]')).toContainText('req');
 });
 
-test('shows a banner when the monitor is unavailable', async ({ page }) => {
+test('shows a Not Connected state, revealing the reason behind More…', async ({ page }) => {
   await page.route('**/api/ai-usage', (route) =>
     route.fulfill({
       contentType: 'application/json',
@@ -27,6 +27,12 @@ test('shows a banner when the monitor is unavailable', async ({ page }) => {
   );
   await page.route('**/events', (route) => route.fulfill({ status: 503, body: '' }));
   await page.goto('/widgets/ai-usage.html');
-  await expect(page.locator('[data-field="banner"]')).toBeVisible();
-  await expect(page.locator('[data-field="banner"]')).toContainText('unreachable');
+
+  await expect(page.locator('[data-field="empty"]')).toBeVisible();
+  await expect(page.locator('.ai-empty-title')).toHaveText('Not Connected');
+  // the underlying error is hidden until "More…" is tapped
+  await expect(page.locator('[data-field="detail"]')).toBeHidden();
+  await page.locator('[data-field="moreBtn"]').click();
+  await expect(page.locator('[data-field="detail"]')).toBeVisible();
+  await expect(page.locator('[data-field="detail"]')).toContainText('unreachable');
 });

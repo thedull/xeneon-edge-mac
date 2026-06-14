@@ -11,7 +11,10 @@
     <div class="widget" data-widget="processes">
       <div class="widget-head">
         <span class="widget-title">Top Processes</span>
-        <span class="widget-sub">by CPU</span>
+        <div class="proc-sort" data-field="sort">
+          <button class="proc-sort-btn" data-sort="cpu" aria-pressed="true">CPU</button>
+          <button class="proc-sort-btn" data-sort="mem" aria-pressed="false">Memory</button>
+        </div>
       </div>
       <div class="proc-table">
         <div class="proc-row head">
@@ -26,14 +29,18 @@
     </div>
     <script type="module">
       import { fetchJson } from '../js/host-bridge.js';
+      import { getConfig, setConfig } from '../js/config.js';
 
       const root = document.querySelector('[data-widget="processes"]');
       const body = document.getElementById('rows');
+      const sortBox = document.querySelector('[data-field="sort"]');
       const esc = (s) => {
         const d = document.createElement('div');
         d.textContent = s ?? '';
         return d.innerHTML;
       };
+
+      let sort = getConfig('procSort', 'cpu') === 'mem' ? 'mem' : 'cpu';
 
       function render(list) {
         body.replaceChildren();
@@ -54,14 +61,29 @@
 
       async function tick() {
         try {
-          const d = await fetchJson('/api/processes?limit=12');
+          const d = await fetchJson(`/api/processes?limit=12&sort=${sort}`);
           render(d.processes || []);
         } catch {
           /* keep last render */
         }
       }
 
-      tick();
+      function applySort(next) {
+        sort = next === 'mem' ? 'mem' : 'cpu';
+        setConfig('procSort', sort);
+        root.dataset.sort = sort;
+        for (const b of sortBox.querySelectorAll('.proc-sort-btn')) {
+          b.setAttribute('aria-pressed', String(b.dataset.sort === sort));
+        }
+        tick();
+      }
+
+      sortBox.addEventListener('click', (e) => {
+        const b = e.target.closest('.proc-sort-btn');
+        if (b) applySort(b.dataset.sort);
+      });
+
+      applySort(sort); // sets active button + does the first fetch
       const timer = setInterval(tick, 2000);
       window.addEventListener('pagehide', () => clearInterval(timer));
     </script>

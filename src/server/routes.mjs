@@ -6,6 +6,7 @@ import {
   collect as collectMedia,
   command as mediaCommand,
   setVolume as mediaSetVolume,
+  seek as mediaSeek,
   artwork as mediaArtwork,
 } from './collectors/media.mjs';
 import { collect as collectAiUsage } from './collectors/ai-usage.mjs';
@@ -82,7 +83,8 @@ export async function handleApi(req, res, url, ctx = {}) {
         return ok(res, await collectNetwork());
       case pathname === '/api/processes': {
         const limit = clampLimit(url.searchParams.get('limit'));
-        return ok(res, await collectProcesses(limit));
+        const sort = url.searchParams.get('sort') === 'mem' ? 'mem' : 'cpu';
+        return ok(res, await collectProcesses(limit, sort));
       }
       case pathname === '/api/media':
         return ok(res, await collectMedia());
@@ -111,6 +113,10 @@ export async function handleApi(req, res, url, ctx = {}) {
       case pathname === '/api/media/volume' && req.method === 'POST': {
         const body = await readBody(req);
         return ok(res, await mediaSetVolume(body.volume));
+      }
+      case pathname === '/api/media/seek' && req.method === 'POST': {
+        const body = await readBody(req);
+        return ok(res, await mediaSeek(body.positionSec));
       }
       case pathname === '/api/ai-usage':
         return ok(res, await collectAiUsage());

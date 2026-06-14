@@ -114,6 +114,14 @@ export async function setVolume(volume) {
   return collect();
 }
 
+// Seek the current track to a position in seconds (drag the progress bar).
+export async function seek(positionSec) {
+  const sec = Math.max(0, Number.parseFloat(positionSec) || 0);
+  if (USE_FIXTURES) return collect();
+  await osa(`tell application "Music" to set player position to ${sec}`);
+  return collect();
+}
+
 // Stream the current track's artwork as raw bytes. Returns {buffer, contentType, id} or null.
 export async function artwork() {
   if (USE_FIXTURES) {

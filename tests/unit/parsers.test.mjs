@@ -8,12 +8,14 @@ import path from 'node:path';
 
 import {
   parseDfCapacity,
+  parseDfTotalGB,
   cpuPercentFromSamples,
   parseVmStat,
   memUsedBytes,
 } from '../../src/server/collectors/system.mjs';
 import { parseNetstat } from '../../src/server/collectors/network.mjs';
-import { parsePs, topByCpu } from '../../src/server/collectors/processes.mjs';
+import { parsePs, topByCpu, topByMem } from '../../src/server/collectors/processes.mjs';
+import { gaugeColor, gaugeMetrics } from '../../web/js/chart.js';
 import { parseMusicOutput } from '../../src/server/collectors/media.mjs';
 import { normalizeUsage } from '../../src/server/collectors/ai-usage.mjs';
 import { parseYouTubeResults } from '../../src/server/collectors/youtube.mjs';
@@ -142,4 +144,50 @@ test('humanRate formats byte rates', () => {
   assert.equal(humanRate(0), '0 B/s');
   assert.equal(humanRate(1024), '1.00 KB/s');
   assert.equal(humanRate(1248300), '1.19 MB/s');
+});
+
+test('parseDfTotalGB reads the root volume size from the 1024-blocks column', () => {
+  assert.equal(parseDfTotalGB(fixture('df.txt')), 921);
+  assert.equal(parseDfTotalGB('only one line'), null);
+});
+
+test('topByMem sorts by memory percent desc (tie-broken by cpu)', () => {
+  const rows = parsePs(fixture('ps.txt'));
+  const byMem = topByMem(rows, 3);
+  for (let i = 1; i < byMem.length; i += 1) {
+    assert.ok(byMem[i - 1].memPercent >= byMem[i].memPercent);
+  }
+  // Electron (12.5%) is the heaviest in the fixture, ahead of Chrome (7.3%).
+  assert.equal(byMem[0].name, 'Electron');
+  // ...whereas topByCpu still leads with Chrome (18.2%).
+  assert.equal(topByCpu(rows, 1)[0].name, 'Google Chrome');
+});
+
+test('gaugeMetrics keeps the 270° arc + stroke inside the canvas (no clipping)', () => {
+  // a range of card sizes the disk gauge actually gets rendered at
+  for (const [w, h] of [
+    [390, 280],
+    [240, 200],
+    [600, 180],
+    [180, 320],
+  ]) {
+    const { r, lw, cx, cy } = gaugeMetrics(w, h);
+    const half = lw / 2;
+    const sin135 = Math.sin((135 * Math.PI) / 180); // ≈ 0.707, the lowest drawn point
+    // top (12-o'clock), bottom endpoints, and the horizontal extremes all fit
+    assert.ok(cy - r - half >= -0.01, `top fits for ${w}x${h}`);
+    assert.ok(cy + r * sin135 + half <= h + 0.01, `bottom fits for ${w}x${h}`);
+    assert.ok(cx - r - half >= -0.01, `left fits for ${w}x${h}`);
+    assert.ok(cx + r + half <= w + 0.01, `right fits for ${w}x${h}`);
+  }
+});
+
+test('gaugeColor maps disk usage to threshold colors (boundaries exclusive)', () => {
+  assert.equal(gaugeColor(95), '#ff4d6d'); // > 90 → red
+  assert.equal(gaugeColor(90), '#ffd166'); // exactly 90 → not red, yellow
+  assert.equal(gaugeColor(80), '#ffd166'); // > 75 → yellow
+  assert.equal(gaugeColor(75), '#57e08e'); // exactly 75 → not yellow, green
+  assert.equal(gaugeColor(60), '#57e08e'); // > 50 → green
+  assert.equal(gaugeColor(50), '#5bc8ff'); // exactly 50 → not green, blue
+  assert.equal(gaugeColor(5), '#5bc8ff'); // low → blue
 });

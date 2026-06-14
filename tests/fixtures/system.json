@@ -4,6 +4,7 @@
   "ramUsedMB": 9842,
   "ramTotalMB": 16384,
   "disk": 74,
+  "diskTotalGB": 921,
   "cpuTemp": null,
   "gpuTemp": null,
   "topProcesses": [],

@@ -23,8 +23,8 @@
   height: 720px;
   flex: 0 0 2560px;
   display: grid;
-  grid-template-columns: 1280px 1280px;
-  grid-template-rows: 360px 360px;
+  grid-template-columns: 1280px repeat(3, 1fr);
+  grid-template-rows: 1fr 1fr; /* fill the 720 height exactly (no bottom-row clip) */
   gap: 14px;
   padding: 14px;
 }
@@ -56,8 +56,11 @@
   color: var(--ink);
   font-size: 2rem;
   line-height: 1;
+  display: grid;
+  place-items: center;
   z-index: 5;
   backdrop-filter: blur(8px);
+  transition: opacity 0.4s ease;
 }
 .nav.prev {
   left: 18px;
@@ -65,25 +68,11 @@
 .nav.next {
   right: 18px;
 }
-.dots {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 12px;
-  z-index: 5;
-}
-.dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 0;
-  background: var(--ink-faint);
-  padding: 0;
-}
-.dot.active {
-  background: var(--accent);
+
+/* idle-hide.js fades affordances out after inactivity */
+.idle-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ---------- generic widget frame (inside an iframe) ---------- */
@@ -259,6 +248,30 @@
 }
 
 /* ---------- process table ---------- */
+.proc-sort {
+  display: flex;
+  gap: 6px;
+}
+.proc-sort-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--card-2);
+  color: var(--ink-dim);
+  font-size: clamp(11px, 1.4vmin, 14px);
+}
+.proc-sort-btn[aria-pressed='true'] {
+  background: var(--accent);
+  color: #04121b;
+  border-color: transparent;
+}
+/* emphasize the column the table is sorted by */
+[data-widget='processes'][data-sort='cpu'] .proc-row > :nth-child(4),
+[data-widget='processes'][data-sort='mem'] .proc-row > :nth-child(5) {
+  color: var(--ink);
+  font-weight: 600;
+}
 .proc-table {
   flex: 1;
   min-height: 0;
@@ -329,11 +342,17 @@
   white-space: nowrap;
 }
 .media-progress {
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
   background: var(--ink-faint);
   overflow: hidden;
   margin: 1vmin 0 0.4vmin;
+  cursor: pointer;
+  touch-action: none; /* let pointer drag seek without scrolling */
+  /* widen the touch target without changing the visual height */
+  padding: 8px 0;
+  background-clip: content-box;
+  box-sizing: content-box;
 }
 .media-progress > span {
   display: block;
@@ -424,11 +443,103 @@
   color: var(--warn);
 }
 
+/* ai-usage "Not Connected" empty state */
+.ai-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1vmin;
+  text-align: center;
+  color: var(--ink-dim);
+}
+.ai-empty-icon {
+  font-size: clamp(28px, 6vmin, 56px);
+  color: var(--warn);
+  line-height: 1;
+}
+.ai-empty-title {
+  font-size: clamp(16px, 2.6vmin, 26px);
+  font-weight: 700;
+  color: var(--ink);
+}
+.ai-more {
+  border: 1px solid var(--line-strong);
+  background: var(--card-2);
+  color: var(--ink-dim);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: clamp(11px, 1.4vmin, 14px);
+}
+.ai-detail {
+  max-width: 80%;
+  font-family: var(--mono);
+  font-size: clamp(10px, 1.3vmin, 13px);
+  color: var(--ink-dim);
+  word-break: break-word;
+}
+
+/* ---------- tabbed player (youtube + apple music) ---------- */
+.player-tabs {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.player-tabbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  z-index: 2;
+}
+/* framed window: keep the player tile (top-left) clear of the macOS
+   traffic-light controls that now float over the chromeless content */
+.framed .stage .tile[data-widget='player'] .player-tabbar {
+  padding-left: 84px;
+}
+.player-tab {
+  flex: 1;
+  min-height: var(--touch);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--card-2);
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.player-tab[aria-pressed='true'] {
+  background: var(--accent);
+  color: #04121b;
+  border-color: transparent;
+}
+.player-panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.player-pane {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: none;
+  background: #000;
+}
+.player-pane.active {
+  display: block;
+}
+
 /* ---------- youtube widget ---------- */
 .yt {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background: #000;
   overflow: hidden;
 }
@@ -464,11 +575,6 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-}
-/* icon-only buttons stay a clean circle (no text to fill the min-width) */
-.yt-btn[data-action='playpause'] {
-  padding: 0;
-  width: var(--touch);
 }
 .yt-search {
   position: absolute;
@@ -541,6 +647,12 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 5;
+}
+.yt-watch {
+  color: var(--accent);
+  margin-left: 8px;
+  text-decoration: underline;
+  white-space: nowrap;
 }
 
 /* ---------- on-screen keyboard ---------- */
