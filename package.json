@@ -8,8 +8,13 @@
   "author": "Gabriel Trujillo",
   "license": "MIT",
   "scripts": {
+    "prestart": "bash scripts/dev-prestart.sh",
     "start": "electron .",
+    "prekiosk": "bash scripts/dev-prestart.sh",
     "kiosk": "XEM_KIOSK=1 electron .",
+    "build:touch": "bash scripts/build-touch.sh",
+    "app": "bash scripts/build-app.sh",
+    "dist": "npm run build:touch && electron-builder",
     "dev": "node scripts/dev.mjs",
     "kiosk:primary": "node scripts/kiosk-on-primary.mjs",
     "mock:ai": "node mock/ai-usage-server.mjs",

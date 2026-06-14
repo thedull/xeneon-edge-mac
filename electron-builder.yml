@@ -6,6 +6,13 @@ files:
   - src/**/*
   - web/**/*
   - package.json
+# Native touch helper (built by `npm run build:touch`). Lands in Contents/
+# Resources/xeneon-touch; electron-builder code-signs nested Mach-O binaries so it
+# inherits the hardened runtime. The user still grants it Input Monitoring +
+# Accessibility on first run.
+extraResources:
+  - from: sidecars/xeneon-touch
+    to: xeneon-touch
 mac:
   category: public.app-category.utilities
   target:

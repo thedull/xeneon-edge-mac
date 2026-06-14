@@ -3,7 +3,8 @@
 // and re-targets the Edge on hotplug.
 const { app, BrowserWindow, screen } = require('electron');
 const path = require('node:path');
-const { resolveTarget, displayInfo } = require('./display.cjs');
+const { resolveTarget, displayInfo, findEdgeDisplay } = require('./display.cjs');
+const { createTouchDriver } = require('./touch.cjs');
 
 const FORCE_PRIMARY =
   process.env.XEM_FORCE_PRIMARY === '1' || process.argv.includes('--kiosk-primary');
@@ -11,9 +12,34 @@ const FORCE_PRIMARY =
 // window with the macOS traffic-light controls (movable / resizable).
 const KIOSK = process.env.XEM_KIOSK === '1' || process.argv.includes('--kiosk');
 
+// On macOS the app stays alive after its window closes, so a second `npm start`
+// would race the first for the window and crash on EADDRINUSE (port 8787). The
+// single-instance lock makes the first instance win: a second launch focuses the
+// existing window and exits. In dev, the `prestart` hook ends a prior instance
+// first, so your newest code wins instead.
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+app.on('second-instance', () => {
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
+
 let serverHandle = null;
 let win = null;
 let currentTarget = null;
+
+// Native touch driver: maps physical Xeneon Edge touches to real clicks on the
+// Edge's display. Auto-detects the panel; we pass the matched display id so it
+// maps onto the exact display Electron is using even in multi-monitor layouts.
+const touchDriver = createTouchDriver({
+  getEdgeDisplayId: () => {
+    const edge = findEdgeDisplay();
+    return edge ? edge.id : 0;
+  },
+});
 
 async function startBackend() {
   // server.mjs is ESM; load it from this CJS entry via dynamic import.
@@ -41,6 +67,10 @@ function createWindow(target, baseUrl) {
     resizable: true,
     fullscreenable: true,
     kiosk: KIOSK, // true fullscreen, no menu, in kiosk mode
+    // Deliver the first tap to the dashboard even when another display's window
+    // had focus — otherwise macOS swallows that click just to activate the
+    // window, forcing a double-tap on the touchscreen.
+    acceptFirstMouse: true,
     backgroundColor: '#000000',
     autoHideMenuBar: true,
     webPreferences: {
@@ -84,9 +114,16 @@ app.whenReady().then(async () => {
   // eslint-disable-next-line no-console
   console.log(`[xem] server ${handle.url} — display:`, displayInfo(currentTarget));
   createWindow(currentTarget, handle.url);
+  touchDriver.start();
 
-  screen.on('display-added', () => retarget(handle.url));
-  screen.on('display-removed', () => retarget(handle.url));
+  screen.on('display-added', () => {
+    retarget(handle.url);
+    touchDriver.retarget();
+  });
+  screen.on('display-removed', () => {
+    retarget(handle.url);
+    touchDriver.retarget();
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(currentTarget, handle.url);
@@ -94,6 +131,10 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', async () => {
+  touchDriver.stop();
   if (serverHandle) await serverHandle.stop().catch(() => {});
   if (process.platform !== 'darwin') app.quit();
 });
+
+// Ensure the helper is killed even on hard quit (Cmd-Q without closing windows).
+app.on('before-quit', () => touchDriver.stop());

@@ -3,6 +3,9 @@ dist/
 out/
 .DS_Store
 *.log
+# Native touch helper build artifacts (rebuild with `npm run build:touch`)
+native/xeneon-touch/.build/
+sidecars/xeneon-touch
 # Playwright
 test-results/
 playwright-report/
