@@ -139,6 +139,12 @@ function retarget(baseUrl) {
 
 app.whenReady().then(async () => {
   hardenYoutubeEmbedding();
+  // Imported iCUE widgets need a WRITABLE install dir. In a packaged app the
+  // bundle (app.asar) is read-only, so point at userData. Must be set before the
+  // server module is imported (it reads XEM_PLUGINS_DIR at load).
+  if (app.isPackaged && !process.env.XEM_PLUGINS_DIR) {
+    process.env.XEM_PLUGINS_DIR = path.join(app.getPath('userData'), 'plugins', 'installed');
+  }
   currentTarget = resolveTarget({ forcePrimary: FORCE_PRIMARY });
   const handle = await startBackend();
   // eslint-disable-next-line no-console

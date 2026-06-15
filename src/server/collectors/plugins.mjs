@@ -12,7 +12,11 @@ import os from 'node:os';
 
 const execFileAsync = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
-const INSTALLED = path.resolve(here, '../../../web/plugins/installed');
+// Writable install dir. In a packaged app the bundle (app.asar) is read-only, so
+// main.cjs points XEM_PLUGINS_DIR at userData; in dev it's the repo folder.
+const INSTALLED = process.env.XEM_PLUGINS_DIR
+  ? path.resolve(process.env.XEM_PLUGINS_DIR)
+  : path.resolve(here, '../../../web/plugins/installed');
 const ID_RE = /^[A-Za-z0-9._-]+$/;
 
 function sanitizeId(raw) {

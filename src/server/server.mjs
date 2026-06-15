@@ -13,6 +13,11 @@ import { collect as collectAiUsage } from './collectors/ai-usage.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WEB_ROOT = path.resolve(here, '../../web');
+// User-imported iCUE widgets live in a writable dir (userData in a packaged app,
+// the repo folder in dev) — NOT inside the read-only app.asar bundle.
+const INSTALLED_DIR = process.env.XEM_PLUGINS_DIR
+  ? path.resolve(process.env.XEM_PLUGINS_DIR)
+  : path.join(DEFAULT_WEB_ROOT, 'plugins', 'installed');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -46,9 +51,17 @@ function injectIcueShim(html) {
 async function serveStatic(res, webRoot, pathname) {
   let rel = decodeURIComponent(pathname);
   if (rel === '/' || rel === '') rel = '/dashboard.html';
-  // Resolve and confine to webRoot (no path traversal).
-  const filePath = path.join(webRoot, path.normalize(rel));
-  if (!filePath.startsWith(webRoot)) {
+  // /plugins/installed/* comes from the writable install dir; everything else
+  // from the (possibly read-only) web root.
+  let base = webRoot;
+  let relForFile = rel;
+  if (rel.startsWith('/plugins/installed/')) {
+    base = INSTALLED_DIR;
+    relForFile = rel.slice('/plugins/installed'.length); // → '/<id>/index.html'
+  }
+  // Resolve and confine to the base (no path traversal).
+  const filePath = path.join(base, path.normalize(relForFile));
+  if (!filePath.startsWith(base)) {
     res.writeHead(403);
     res.end('forbidden');
     return;
