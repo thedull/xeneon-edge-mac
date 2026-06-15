@@ -12,10 +12,10 @@ test('tabbed player switches panes and persists the choice', async ({ page }) =>
   // YouTube is the default active pane.
   await expect(page.locator('[data-pane="youtube"]')).toHaveClass(/active/);
   await expect(page.locator('[data-pane="media"]')).not.toHaveClass(/active/);
-  await expect(page.locator('.player-tab[data-tab="youtube"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.player-seg[data-tab="youtube"]')).toHaveAttribute('aria-pressed', 'true');
 
   // Switch to Apple Music.
-  await page.locator('.player-tab[data-tab="media"]').click();
+  await page.locator('.player-seg[data-tab="media"]').click();
   await expect(page.locator('[data-pane="media"]')).toHaveClass(/active/);
   await expect(page.locator('[data-pane="youtube"]')).not.toHaveClass(/active/);
   await expect.poll(() => page.evaluate(() => window.__player.active)).toBe('media');

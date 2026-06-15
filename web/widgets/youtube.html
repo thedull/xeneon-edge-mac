@@ -12,6 +12,9 @@
          inline so the Electron <webview> is top-level (it stays inert in an
          iframe). -->
     <div id="yt-root" style="width: 100vw; height: 100vh"></div>
+    <!-- hls.js (UMD → window.Hls) for 720p HLS playback; classic script runs
+         before the module below, so Hls is defined when the player mounts. -->
+    <script src="../js/vendor/hls.min.js"></script>
     <script type="module">
       import { mountYoutube } from '../js/youtube-player.js';
       mountYoutube(document.getElementById('yt-root'));

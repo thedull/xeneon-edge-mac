@@ -9,6 +9,9 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- hls.js (UMD → window.Hls): the player mounts inline in the dashboard,
+         so 720p HLS needs the library here too. -->
+    <script src="js/vendor/hls.min.js"></script>
     <script type="module">
       import { applyScale } from './js/scale.js';
       import { initGrid } from './js/grid.js';

@@ -30,6 +30,8 @@
     <script type="module">
       import { fetchJson } from '../js/host-bridge.js';
       import { getConfig, setConfig } from '../js/config.js';
+      import { installSwipeNav } from '../js/swipe-nav.js';
+      installSwipeNav(); // forward horizontal swipes to the dashboard (page nav)
 
       const root = document.querySelector('[data-widget="processes"]');
       const body = document.getElementById('rows');

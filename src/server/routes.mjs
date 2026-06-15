@@ -130,6 +130,42 @@ export async function handleApi(req, res, url, ctx = {}) {
           return ok(res, { items: [], error: err.message, source: 'youtube-scrape', ts: Date.now() });
         }
       }
+      case pathname === '/api/youtube/stream': {
+        const id = url.searchParams.get('id') || '';
+        try {
+          const { resolveStream } = await import('./collectors/youtube-stream.mjs');
+          return ok(res, { id, url: await resolveStream(id), source: 'yt-dlp', ts: Date.now() });
+        } catch (err) {
+          return ok(res, { id, url: null, error: err.message, source: 'yt-dlp', ts: Date.now() });
+        }
+      }
+      case pathname === '/api/youtube/hls': {
+        const id = url.searchParams.get('id') || '';
+        try {
+          const { hlsPlaylist } = await import('./collectors/youtube-hls.mjs');
+          const { body, contentType } = await hlsPlaylist(id);
+          res.writeHead(200, {
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+          });
+          res.end(body);
+        } catch (err) {
+          // not-hls / unavailable → client falls back to the 360p direct stream.
+          sendJson(res, 409, { id, error: err.message, fallback: '/api/youtube/stream' });
+        }
+        return true;
+      }
+      case pathname === '/api/youtube/seg': {
+        const u = url.searchParams.get('u') || '';
+        try {
+          const { proxySegment } = await import('./collectors/youtube-hls.mjs');
+          await proxySegment(u, req.headers.range, req, res);
+        } catch (err) {
+          if (!res.headersSent) sendJson(res, 502, { error: err.message });
+        }
+        return true;
+      }
       default:
         sendJson(res, 404, { error: `no route: ${req.method} ${pathname}` });
         return true;

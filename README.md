@@ -38,6 +38,10 @@ web/                       host-agnostic widgets (served to the kiosk window)
 | `GET /api/media/artwork` | current track image |
 | `POST /api/media/{playpause,next,previous,volume}` | fresh media snapshot |
 | `GET /api/ai-usage` | `{ available, providers:[…], totalSpendUSD }` |
+| `GET /api/youtube/search?q=` | `{ items:[{id,title,channel,thumb,duration}] }` (keyless scrape) |
+| `GET /api/youtube/hls?id=` | rewritten 720p HLS playlist (segments → `/api/youtube/seg`); `409` → use `stream` |
+| `GET /api/youtube/seg?u=` | same-origin proxy for a googlevideo HLS segment (Range pass-through) |
+| `GET /api/youtube/stream?id=` | `{ url }` — direct 360p progressive mp4 (HLS fallback) |
 | `GET /events` | SSE: `system` `network` `media` `ai-usage` `ping` |
 
 ## Run
@@ -74,8 +78,8 @@ skipped with `XEM_SKIP_ELECTRON=1`.
 
 ## Feature status (MoSCoW)
 
-- **Must** — YouTube player + collapsible search (**keyless** — host scrapes results, no API key) ✓ · System stats as **live area charts** (CPU%, real Memory Used via `vm_stat`, Disk%, network) ✓
-- **Should** — Apple Music miniplayer + volume ✓ · **Native touchscreen support** (WCH HID → mapped clicks, see below) ✓
+- **Must** — YouTube **native player** (keyless search + 720p HLS via yt-dlp, see below) ✓ · System stats as **live area charts** (CPU%, real Memory Used via `vm_stat`, Disk%, network) ✓
+- **Should** — Apple Music miniplayer + volume ✓ · **Native touchscreen support** (WCH HID → mapped clicks, see below) ✓ · **Swipe paging** + floating source pill ✓
 - **Could** — Top processes ✓
 - **Would** — ai-usage-monitor integration (+ mock) ✓ · community `.icuewidget` support (next phase, see below)
 
@@ -159,6 +163,50 @@ terminal-launched `npm start` attributes the grants to the *terminal* instead.
 - Single-pointer only (no multi-finger gestures) — matches the macOS click model.
 - The ad-hoc / self-signed build is for **local use**; distribution needs a real
   Developer ID + notarization for both the helper and the app.
+
+## YouTube playback
+
+Search is **keyless** — the host scrapes the public results page server-side
+(`collectors/youtube.mjs`), so there's no API key or quota. Playback is **native**,
+not an embed: YouTube now blocks embedded IFrame playback from a localhost origin
+("Video unavailable / Error 152"), and that can't be beaten with Referer/UA
+spoofing. Instead the host resolves a direct stream with **yt-dlp** and plays it in
+a plain `<video>`:
+
+- **720p** — `/api/youtube/hls?id=` resolves the HLS variant (itag 95, audio+video
+  muxed) and rewrites the playlist so every segment points back at
+  `/api/youtube/seg?u=`. googlevideo sends no `Access-Control-Allow-Origin`, so the
+  segments are proxied **same-origin** with `Range` pass-through (seeking works).
+  The client plays it via **hls.js** (`web/js/vendor/hls.min.js`).
+- **360p fallback** — `/api/youtube/stream?id=` resolves the progressive mp4
+  (itag 18); used automatically when HLS/MSE is unavailable or errors, and as a
+  last resort the player offers a "Watch on YouTube" link.
+
+Requires **yt-dlp** on `PATH` (`brew install yt-dlp`); override with
+`XEM_YTDLP=/path/to/yt-dlp`. Bundling yt-dlp into `sidecars/` for distribution is a
+packaging follow-up. itag 95 rotates per-video — the `95/18` + `not-hls` detection
+guarantees a graceful drop to 360p, never a hard failure.
+
+## Gestures
+
+All gestures run on **Pointer Events** — the touch driver injects mouse events, so
+detectors never use Touch events and never `preventDefault` (vertical scroll,
+native `<video>` controls, and the media seek/volume drags keep working):
+
+- **Horizontal swipe → change page**, anywhere — including inside widget iframes.
+  Pointer events don't bubble out of an iframe, so each widget runs
+  `web/js/swipe-nav.js`, which forwards the swipe to the dashboard via
+  `postMessage`; `grid.js` validates origin + source before navigating. The nav
+  arrows still work and idle-hide after 30s.
+- **Switch player source** — tap the floating **pill** (top-center; idle-hides, and
+  auto-hides while the search overlay is open). (An earlier vertical-swipe switch
+  was removed — it fought scrolling the search results.)
+- **Browse search results** — drag-to-scroll (synthetic mouse events don't scroll
+  natively); a tap still plays a result, while a real drag is detected and swallows
+  the click so it doesn't.
+- The inline player **opts out of horizontal paging** so dragging the YouTube scrub
+  bar doesn't flip pages — change pages from the player via the nav arrows or by
+  swiping the instrumentation tiles.
 
 ## Roadmap
 

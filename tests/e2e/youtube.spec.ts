@@ -10,6 +10,21 @@ async function stubYouTube(page, items = DEFAULT_ITEMS) {
     }),
   );
   await page.route('**/iframe_api', (route) => route.abort());
+  // 720p HLS path → 409 so the player falls back to the direct stream stub below.
+  await page.route('**/api/youtube/hls**', (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'not-hls', fallback: '/api/youtube/stream' }),
+    }),
+  );
+  // Native playback resolves a stream via the host; stub it so tests stay offline.
+  await page.route('**/api/youtube/stream**', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ id: 'abc123', url: 'https://example.com/x.mp4', source: 'yt-dlp', ts: Date.now() }),
+    }),
+  );
 }
 
 const DEFAULT_ITEMS = [

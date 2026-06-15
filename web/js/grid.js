@@ -107,7 +107,10 @@ export function initGrid(root) {
   // tile so widget interactions aren't hijacked — only the gutters swipe).
   let startX = null;
   stage.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.tile-frame')) return;
+    // Ignore drags inside an iframe tile (those forward via postMessage) and
+    // inside the inline player (it owns its gestures — vertical switches source,
+    // and a horizontal drag there is the YouTube scrub bar, not a page swipe).
+    if (e.target.closest('.tile-frame, .player-tabs')) return;
     startX = e.clientX;
   });
   stage.addEventListener('pointerup', (e) => {
@@ -115,6 +118,24 @@ export function initGrid(root) {
     const dx = e.clientX - startX;
     if (Math.abs(dx) > 80) (dx < 0 ? next : prev)();
     startX = null;
+  });
+
+  // Widget iframes can't bubble pointer events to the stage, so they postMessage
+  // their swipe intent here (see web/js/swipe-nav.js). Validate origin + source.
+  const apiOrigin = (() => {
+    try {
+      return apiParam ? new URL(apiParam).origin : null;
+    } catch {
+      return null;
+    }
+  })();
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin && e.origin !== apiOrigin) return;
+    if (!e.data || e.data.type !== 'nav:swipe') return;
+    const fromTile = [...pager.querySelectorAll('iframe')].some((f) => f.contentWindow === e.source);
+    if (!fromTile) return;
+    if (e.data.dir === 'next') next();
+    else prev();
   });
 
   render();

@@ -489,33 +489,46 @@
   flex-direction: column;
   background: var(--bg);
 }
-.player-tabbar {
+/* Floating source pill — replaces the old tab bar so the player fills the whole
+   tile. Idle-hides like the nav arrows for a clean full-bleed look when
+   unattended. Top-center clears the YouTube search button (top-left) and the
+   framed-mode traffic lights. */
+.player-pill {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  gap: 8px;
-  padding: 8px;
-  background: var(--card);
-  border-bottom: 1px solid var(--line);
-  z-index: 2;
-}
-/* framed window: keep the player tile (top-left) clear of the macOS
-   traffic-light controls that now float over the chromeless content */
-.framed .stage .tile[data-widget='player'] .player-tabbar {
-  padding-left: 84px;
-}
-.player-tab {
-  flex: 1;
-  min-height: var(--touch);
-  border-radius: var(--radius-sm);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
   border: 1px solid var(--line-strong);
-  background: var(--card-2);
-  color: var(--ink);
-  font-size: 1.1rem;
-  font-weight: 600;
+  backdrop-filter: blur(10px);
+  z-index: 6;
+  transition: opacity 0.4s ease;
 }
-.player-tab[aria-pressed='true'] {
+.player-seg {
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.player-seg[aria-pressed='true'] {
   background: var(--accent);
   color: #04121b;
-  border-color: transparent;
+}
+/* Hide the source pill while the YouTube search overlay is open — it slides down
+   over the top and the pill would land on the search bar. :has reaches across to
+   the sibling pill. */
+.player-tabs:has(.yt-search.open) .player-pill {
+  opacity: 0;
+  pointer-events: none;
 }
 .player-panes {
   position: relative;
@@ -544,13 +557,31 @@
   overflow: hidden;
 }
 .yt-player {
+  position: relative;
   width: 100%;
   height: 100%;
 }
-.yt-player iframe {
+.yt-player iframe,
+.yt-video {
   width: 100%;
   height: 100%;
   border: 0;
+}
+/* Contain the video letterboxed on the 32:9 panel (it's 16:9 progressive). */
+.yt-video {
+  object-fit: contain;
+  background: #000;
+}
+.yt-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.yt-loading.hidden {
+  display: none;
 }
 .yt-toolbar {
   position: absolute;
@@ -611,14 +642,22 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  /* Scroll by dragging (synthetic mouse events, see youtube-player.js) — hide the
+     scrollbar for a cleaner touch UI. */
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.yt-results::-webkit-scrollbar {
+  display: none;
 }
 .yt-result {
   display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 14px;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
   align-items: center;
-  padding: 8px;
+  padding: 6px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--card);
@@ -627,15 +666,19 @@
   color: var(--ink);
 }
 .yt-result img {
-  width: 160px;
-  height: 90px;
+  width: 120px;
+  height: 68px;
   object-fit: cover;
   border-radius: 8px;
   background: var(--card-2);
 }
 .yt-result .t {
   font-weight: 600;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .yt-result .c {
   color: var(--ink-dim);

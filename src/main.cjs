@@ -1,7 +1,7 @@
 // main.cjs — Electron host shell. Starts the local server, opens a kiosk window
 // on the Xeneon Edge (or a 2560x720 window on the primary display as fallback),
 // and re-targets the Edge on hotplug.
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen, session } = require('electron');
 const path = require('node:path');
 const { resolveTarget, displayInfo, findEdgeDisplay } = require('./display.cjs');
 const { createTouchDriver } = require('./touch.cjs');
@@ -26,6 +26,35 @@ app.on('second-instance', () => {
     win.focus();
   }
 });
+
+// YouTube tightened embedded playback: embeds from a localhost origin with an
+// Electron User-Agent now fail with "Video unavailable / can't be embedded". Make
+// requests to YouTube look like a normal Chrome browser embedding from youtube.com
+// itself. This recovers videos blocked by origin/referrer (the common case); ones
+// whose owners truly disabled embedding still need the yt-dlp fallback.
+function hardenYoutubeEmbedding() {
+  const CHROME_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+    '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+  const ytHost = /(^|\.)(youtube|youtube-nocookie|googlevideo|ytimg|ggpht)\.com$/i;
+  const ses = session.defaultSession;
+  ses.setUserAgent(CHROME_UA); // drop the "Electron" UA that embed/anti-bot checks flag
+  ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    let host = '';
+    try {
+      host = new URL(details.url).hostname;
+    } catch {
+      /* non-URL request; leave headers untouched */
+    }
+    if (ytHost.test(host)) {
+      details.requestHeaders['User-Agent'] = CHROME_UA;
+      // Present the embed as if it lives on youtube.com itself.
+      details.requestHeaders.Referer = 'https://www.youtube.com/';
+      details.requestHeaders.Origin = 'https://www.youtube.com';
+    }
+    cb({ requestHeaders: details.requestHeaders });
+  });
+}
 
 let serverHandle = null;
 let win = null;
@@ -109,6 +138,7 @@ function retarget(baseUrl) {
 }
 
 app.whenReady().then(async () => {
+  hardenYoutubeEmbedding();
   currentTarget = resolveTarget({ forcePrimary: FORCE_PRIMARY });
   const handle = await startBackend();
   // eslint-disable-next-line no-console

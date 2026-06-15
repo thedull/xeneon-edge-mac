@@ -23,6 +23,8 @@
     </div>
     <script type="module">
       import { fetchJson, connectEvents } from '../js/host-bridge.js';
+      import { installSwipeNav } from '../js/swipe-nav.js';
+      installSwipeNav(); // forward horizontal swipes to the dashboard (page nav)
 
       const root = document.querySelector('[data-widget="ai-usage"]');
       const grid = document.querySelector('[data-field="grid"]');

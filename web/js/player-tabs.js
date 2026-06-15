@@ -1,33 +1,35 @@
-// player-tabs.js — the tabbed YouTube / Apple Music player, mounted directly
-// into its container (the dashboard tile, or a standalone player.html).
+// player-tabs.js — the YouTube / Apple Music player. Source switching is via a
+// small floating pill that idle-hides. Horizontal swipe is reserved for page
+// navigation (handled by grid.js), so the player tile opts out of the stage
+// pager (see grid.js).
 //
-// YouTube is mounted INLINE (not an iframe) via mountYoutube, because the
-// Electron <webview> it uses for playback only initializes at the top level of
-// a document — it stays inert inside an iframe. Apple Music has no webview, so
-// it stays a lightweight iframe.
+// YouTube is mounted INLINE (not an iframe) via mountYoutube — its native <video>
+// is a direct child of this document. Apple Music stays a lightweight iframe.
 import { getConfig, setConfig } from './config.js';
+import { idleHide } from './idle-hide.js';
 import { mountYoutube } from './youtube-player.js';
 
 export function mountPlayer(container, { apiParam = null, widgetBase = '' } = {}) {
   const suffix = apiParam ? `?api=${encodeURIComponent(apiParam)}` : '';
   container.classList.add('player-tabs');
   container.innerHTML = `
-    <div class="player-tabbar" role="tablist">
-      <button class="player-tab" data-tab="youtube" aria-pressed="true">&#9654; YouTube</button>
-      <button class="player-tab" data-tab="media" aria-pressed="false">&#9835; Apple Music</button>
-    </div>
     <div class="player-panes">
       <div class="player-pane" data-pane="youtube"></div>
       <iframe class="player-pane" data-pane="media" title="Apple Music"></iframe>
+    </div>
+    <div class="player-pill" data-field="pill" role="tablist">
+      <button class="player-seg" data-tab="youtube" aria-pressed="true">&#9654; YouTube</button>
+      <button class="player-seg" data-tab="media" aria-pressed="false">&#9835; Music</button>
     </div>`;
 
   const panes = {
     youtube: container.querySelector('[data-pane="youtube"]'),
     media: container.querySelector('[data-pane="media"]'),
   };
+  const pill = container.querySelector('[data-field="pill"]');
+  const segs = [...container.querySelectorAll('.player-seg')];
   const ytApi = mountYoutube(panes.youtube);
   panes.media.src = `${widgetBase}media-player.html${suffix}`;
-  const tabs = [...container.querySelectorAll('.player-tab')];
 
   let active = getConfig('playerTab', 'youtube');
   if (!panes[active]) active = 'youtube';
@@ -50,15 +52,20 @@ export function mountPlayer(container, { apiParam = null, widgetBase = '' } = {}
       el.classList.toggle('active', name === tab);
     }
     pauseOther(tab);
-    tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.tab === tab)));
+    segs.forEach((s) => s.setAttribute('aria-pressed', String(s.dataset.tab === tab)));
     active = tab;
     setConfig('playerTab', tab);
   }
-
-  container.addEventListener('click', (e) => {
-    const t = e.target.closest('.player-tab');
-    if (t) show(t.dataset.tab);
+  // Tap a pill segment to switch source. (Swipe-to-switch was removed — a
+  // vertical swipe fought scrolling the search results; the pill is now the only
+  // switch affordance.)
+  pill.addEventListener('click', (e) => {
+    const s = e.target.closest('.player-seg');
+    if (s) show(s.dataset.tab);
   });
+
+  // Fade the pill after 30s idle → clean full-bleed player when unattended.
+  idleHide(pill, { timeoutMs: 30000, root: container });
 
   show(active);
 

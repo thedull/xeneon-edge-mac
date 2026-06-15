@@ -1,17 +1,21 @@
-// youtube-player.js — the YouTube search + player, mounted directly into a
-// container (the dashboard player tile, or a standalone youtube.html). Mounting
-// inline (NOT inside an iframe) keeps the IFrame player a direct child of the
-// host document — the clean, original embedded player. Videos whose owners
-// disabled web embedding fall back to the "Watch on YouTube" link.
-import { fetchJson } from './host-bridge.js';
+// youtube-player.js — YouTube search + player. Playback uses a NATIVE <video>
+// fed by a direct stream URL the host resolves with yt-dlp (/api/youtube/stream).
+//
+// We dropped the embedded IFrame player: YouTube now rejects embeds from a
+// localhost origin with "Video unavailable / Error 152", and that can't be beaten
+// with Referer/UA spoofing anymore. Streaming the file directly has no embed and
+// no origin check. Anything yt-dlp can't resolve falls back to "Watch on YouTube".
+import { fetchJson, apiUrl } from './host-bridge.js';
 import { attachKeyboard } from './keyboard.js';
 import { idleHide } from './idle-hide.js';
 
 export function mountYoutube(container) {
-  // Inner .yt wrapper (the container itself may be a positioned tile pane).
   container.innerHTML = `
     <div class="yt" data-widget="youtube">
-      <div class="yt-player"><div class="yt-iframe-host"></div></div>
+      <div class="yt-player">
+        <video class="yt-video" data-field="video" playsinline controls></video>
+        <div class="yt-loading hidden" data-field="loading"><div class="status-banner">Loading…</div></div>
+      </div>
       <div class="yt-toolbar" data-field="toolbar">
         <button class="yt-btn" data-action="toggle-search">&#128269; Search</button>
       </div>
@@ -25,7 +29,7 @@ export function mountYoutube(container) {
       </div>
       <div class="yt-error hidden" data-field="error">
         <div class="status-banner">
-          This video can&rsquo;t be embedded.
+          This video can&rsquo;t be played here.
           <a class="yt-watch" data-field="watch" target="_blank" rel="noopener">Watch on YouTube &#8599;</a>
         </div>
       </div>
@@ -36,78 +40,95 @@ export function mountYoutube(container) {
   const panel = $('[data-field="searchPanel"]');
   const results = $('[data-field="results"]');
   const errorEl = $('[data-field="error"]');
+  const loadingEl = $('[data-field="loading"]');
   const watchLink = $('[data-field="watch"]');
   const q = $('[data-field="q"]');
-  const playerHost = $('.yt-iframe-host');
+  const video = $('[data-field="video"]');
   const esc = (s) => {
     const d = document.createElement('div');
     d.textContent = s ?? '';
     return d.innerHTML;
   };
 
-  const state = { results: [], lastLoaded: null };
-  let player = null;
-  let pendingId = null;
+  const state = { results: [], lastLoaded: null, hls: null, mode: 'hls' };
 
-  // --- YouTube IFrame Player API (the clean embedded player) ---
-  function initPlayer() {
-    try {
-      player = new window.YT.Player(playerHost, {
-        width: '100%',
-        height: '100%',
-        playerVars: { playsinline: 1, modestbranding: 1, rel: 0, autoplay: 1 },
-        events: {
-          onReady: () => {
-            if (pendingId) loadVideo(pendingId);
-          },
-          onError: () => showError(),
-        },
-      });
-    } catch {
-      /* player stays null; search still works */
+  const showError = () => errorEl.classList.remove('hidden');
+  const hideError = () => errorEl.classList.add('hidden');
+  const setLoading = (on) => loadingEl.classList.toggle('hidden', !on);
+  const toggleSearch = () => panel.classList.toggle('open');
+  const closeSearch = () => panel.classList.remove('open');
+
+  function teardownHls() {
+    if (state.hls) {
+      try {
+        state.hls.destroy();
+      } catch {
+        /* ignore */
+      }
+      state.hls = null;
     }
   }
 
-  function ensureApi() {
-    if (window.YT && window.YT.Player) return initPlayer();
-    // The API calls a single global callback when ready.
-    const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      if (typeof prev === 'function') prev();
-      initPlayer();
-    };
-    if (document.querySelector('script[data-yt-api]')) return;
-    const s = document.createElement('script');
-    s.src = 'https://www.youtube.com/iframe_api';
-    s.setAttribute('data-yt-api', '');
-    s.onerror = () => {};
-    document.head.appendChild(s);
-  }
-
+  // Try 720p HLS first (via the host's same-origin proxy); fall back to the
+  // direct 360p progressive stream when HLS/MSE is unavailable or errors.
   function loadVideo(id) {
     hideError();
-    state.lastLoaded = id;
+    state.lastLoaded = id; // set synchronously so callers/tests see the selection
     if (watchLink) watchLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
-    pendingId = id;
-    if (player && typeof player.loadVideoById === 'function') {
-      player.loadVideoById(id);
-      pendingId = null;
-    }
     closeSearch();
+    setLoading(true);
+    teardownHls();
+    const Hls = window.Hls;
+    if (Hls && Hls.isSupported()) {
+      state.mode = 'hls';
+      const hls = new Hls({ maxBufferLength: 30 });
+      state.hls = hls;
+      hls.loadSource(apiUrl(`/api/youtube/hls?id=${encodeURIComponent(id)}`));
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (state.lastLoaded !== id) return;
+        setLoading(false);
+        video.play().catch(() => {});
+      });
+      hls.on(Hls.Events.ERROR, (_evt, data) => {
+        if (data && data.fatal) fallbackDirect(id); // 720p gone → 360p
+      });
+    } else {
+      fallbackDirect(id);
+    }
+  }
+
+  async function fallbackDirect(id) {
+    if (state.lastLoaded !== id) return;
+    state.mode = 'direct';
+    teardownHls();
+    try {
+      const data = await fetchJson(`/api/youtube/stream?id=${encodeURIComponent(id)}`);
+      if (state.lastLoaded !== id) return; // superseded by a newer selection
+      if (!data || !data.url) throw new Error(data && data.error ? data.error : 'no stream');
+      video.src = data.url;
+      // Autoplay may be blocked without a gesture; controls remain either way.
+      video.play().catch(() => {});
+    } catch {
+      if (state.lastLoaded === id) showError();
+    } finally {
+      if (state.lastLoaded === id) setLoading(false);
+    }
   }
 
   function pause() {
     try {
-      if (player && player.pauseVideo) player.pauseVideo();
+      video.pause();
     } catch {
       /* ignore */
     }
   }
 
-  const showError = () => errorEl.classList.remove('hidden');
-  const hideError = () => errorEl.classList.add('hidden');
-  const toggleSearch = () => panel.classList.toggle('open');
-  const closeSearch = () => panel.classList.remove('open');
+  // A media error (e.g. an expired googlevideo URL) in DIRECT mode → offer the
+  // YouTube link. In HLS mode, fatal errors are handled by Hls.Events.ERROR.
+  video.addEventListener('error', () => {
+    if (state.mode === 'direct' && video.currentSrc) showError();
+  });
 
   async function search(query) {
     const term = (query || '').trim();
@@ -141,6 +162,39 @@ export function mountYoutube(container) {
     }
   }
 
+  // Drag-to-scroll the results list. The touch driver injects mouse (not touch)
+  // events, so native finger-scroll doesn't happen — move scrollTop on drag, and
+  // swallow the click that ends a real drag so it doesn't play a result.
+  let dragStartY = null;
+  let dragStartTop = 0;
+  let dragMoved = false;
+  results.addEventListener('pointerdown', (e) => {
+    dragStartY = e.clientY;
+    dragStartTop = results.scrollTop;
+    dragMoved = false;
+  });
+  results.addEventListener('pointermove', (e) => {
+    if (dragStartY === null) return;
+    const dy = e.clientY - dragStartY;
+    if (Math.abs(dy) > 6) dragMoved = true;
+    results.scrollTop = dragStartTop - dy;
+  });
+  const endDrag = () => {
+    dragStartY = null;
+  };
+  results.addEventListener('pointerup', endDrag);
+  results.addEventListener('pointercancel', endDrag);
+  results.addEventListener(
+    'click',
+    (e) => {
+      if (dragMoved) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    },
+    true, // capture, so it pre-empts the result button's click
+  );
+
   ytRoot.addEventListener('click', (e) => {
     const a = e.target.closest('[data-action]');
     if (!a) return;
@@ -154,7 +208,6 @@ export function mountYoutube(container) {
     if (e.key === 'Enter') search(q.value);
   });
 
-  ensureApi();
   ytRoot.dataset.ready = 'true';
 
   const api = {

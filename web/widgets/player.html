@@ -11,6 +11,8 @@
     <!-- Standalone tabbed player (dev + e2e). The dashboard mounts the same
          module inline via grid.js so youtube.html stays a direct child iframe. -->
     <div data-widget="player" style="width: 100vw; height: 100vh"></div>
+    <!-- hls.js (UMD → window.Hls) for 720p HLS playback. -->
+    <script src="../js/vendor/hls.min.js"></script>
     <script type="module">
       import { mountPlayer } from '../js/player-tabs.js';
       const apiParam = new URLSearchParams(location.search).get('api');

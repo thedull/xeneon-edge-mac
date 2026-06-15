@@ -37,7 +37,7 @@ export function parseYouTubeResults(html) {
       });
     }
   }
-  return out.slice(0, 12);
+  return out.slice(0, 20);
 }
 
 export async function search(query) {

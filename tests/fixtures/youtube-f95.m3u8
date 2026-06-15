@@ -1,0 +1,14 @@
+#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-TARGETDURATION:5
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-MAP:URI="https://r1---sn-x.googlevideo.com/videoplayback/init.mp4?itag=95"
+#EXT-X-KEY:METHOD=AES-128,URI="https://r1---sn-x.googlevideo.com/key?k=abc"
+#EXTINF:5.000,
+https://r1---sn-x.googlevideo.com/videoplayback/seg1.ts?range=0-100
+#EXTINF:5.000,
+seg2.ts?range=101-200
+#EXT-X-BYTERANGE:1000@0
+#EXTINF:5.000,
+https://r2---sn-y.googlevideo.com/videoplayback/seg3.ts
+#EXT-X-ENDLIST

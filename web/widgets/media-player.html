@@ -39,6 +39,10 @@
     </div>
     <script type="module">
       import { fetchJson, postJson, apiUrl, connectEvents } from '../js/host-bridge.js';
+      import { installSwipeNav } from '../js/swipe-nav.js';
+      // Horizontal swipe → change page. Ignore the seek bar / volume so their
+      // drags aren't hijacked.
+      installSwipeNav({ ignore: '.media-progress, input[type=range]' });
 
       const root = document.querySelector('[data-widget="media"]');
       const $ = (f) => document.querySelector(`[data-field="${f}"]`);
