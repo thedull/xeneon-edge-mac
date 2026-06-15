@@ -33,6 +33,12 @@ async function readBody(req) {
   }
 }
 
+async function readRawBody(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  return Buffer.concat(chunks);
+}
+
 // Returns true if the request was handled here.
 export async function handleApi(req, res, url, ctx = {}) {
   const { pathname } = url;
@@ -41,7 +47,7 @@ export async function handleApi(req, res, url, ctx = {}) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     });
     res.end();
@@ -165,6 +171,29 @@ export async function handleApi(req, res, url, ctx = {}) {
           if (!res.headersSent) sendJson(res, 502, { error: err.message });
         }
         return true;
+      }
+      case pathname === '/api/plugins': {
+        const { listPlugins } = await import('./collectors/plugins.mjs');
+        return ok(res, { plugins: await listPlugins(), ts: Date.now() });
+      }
+      case pathname === '/api/plugins/import' && req.method === 'POST': {
+        try {
+          const { importPlugin } = await import('./collectors/plugins.mjs');
+          return ok(res, { plugin: await importPlugin(await readRawBody(req)) });
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return true;
+        }
+      }
+      case pathname.startsWith('/api/plugins/') && req.method === 'DELETE': {
+        const id = decodeURIComponent(pathname.slice('/api/plugins/'.length));
+        try {
+          const { deletePlugin } = await import('./collectors/plugins.mjs');
+          return ok(res, await deletePlugin(id));
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return true;
+        }
       }
       default:
         sendJson(res, 404, { error: `no route: ${req.method} ${pathname}` });

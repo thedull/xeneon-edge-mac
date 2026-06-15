@@ -140,6 +140,22 @@
         /* ignore */
       }
     });
+    // User settings from the dashboard override the defaults (see plugins.js).
+    try {
+      var cfgRaw = new URLSearchParams(location.search).get('cfg');
+      if (cfgRaw) {
+        var cfg = JSON.parse(cfgRaw);
+        Object.keys(cfg).forEach(function (k) {
+          try {
+            window[k] = cfg[k];
+          } catch (e) {
+            /* ignore */
+          }
+        });
+      }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   var notified = false;

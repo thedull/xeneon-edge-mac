@@ -1,15 +1,25 @@
 // grid.js — dashboard tile layout engine + swipe pagination.
 // Widgets render in iframes (host-agnostic pages); the dashboard forwards its
-// own ?api= origin so child widgets resolve the same API.
+// own ?api= origin so child widgets resolve the same API. Imported iCUE widgets
+// (see plugins.js) are appended as their own pages after the preset pages.
 import { getConfig, setConfig } from './config.js';
 import { idleHide } from './idle-hide.js';
 import { mountPlayer } from './player-tabs.js';
+import {
+  loadAddedPages,
+  pluginIframeSrc,
+  openLibrary,
+  openSettings,
+  removeWidget,
+  trText,
+} from './plugins.js';
 
 // The page is a 4-column grid: a 1280px player column on the left, then three
 // equal columns on the right. Tiles position via CSS grid lines.
 //   Page 1:  [ player ][ system-monitor: CPU · Mem · Disk          ]
 //            [ player ][ processes (66%)        ][ network (33%)   ]
 //   Page 2:  [ ai-usage (full) ]
+//   Page 3+: one per imported iCUE widget
 export const LAYOUTS = {
   default: {
     label: 'Default',
@@ -29,64 +39,99 @@ export function initGrid(root) {
   const apiParam = new URLSearchParams(location.search).get('api');
   let presetName = getConfig('preset', 'default');
   if (!LAYOUTS[presetName]) presetName = 'default';
-  let index = clampIndex(Number.parseInt(getConfig('page', '0'), 10), presetName);
+  let pluginMetas = []; // added + installed iCUE widgets, in user order
+  const totalPages = () => LAYOUTS[presetName].pages.length + pluginMetas.length;
+  let index = clampIndex(Number.parseInt(getConfig('page', '0'), 10));
 
   const stage = el('div', 'stage');
   const pager = el('div', 'pager');
   const prevBtn = navBtn('prev', '‹');
   const nextBtn = navBtn('next', '›');
-  stage.append(pager, prevBtn, nextBtn);
+  const libBtn = el('button', 'nav lib');
+  libBtn.type = 'button';
+  libBtn.textContent = '⊞'; // ⊞
+  libBtn.title = 'Widgets';
+  stage.append(pager, prevBtn, nextBtn, libBtn);
   root.replaceChildren(stage);
 
   function render() {
-    const preset = LAYOUTS[presetName];
     pager.replaceChildren();
-    pager.style.width = `${preset.pages.length * 2560}px`;
-    preset.pages.forEach((page) => {
-      const pageEl = el('section', 'page');
-      for (const tile of page) {
-        const t = el('div', 'tile');
-        t.style.gridColumn = tile.col;
-        t.style.gridRow = tile.row;
-        t.dataset.widget = tile.widget;
-        if (tile.widget === 'player') {
-          // Mount the tabbed player inline so youtube.html is a direct child
-          // iframe of the dashboard (avoids the extra-nesting embed failure).
-          mountPlayer(t, { apiParam, widgetBase: 'widgets/' });
-        } else {
-          const frame = document.createElement('iframe');
-          frame.className = 'tile-frame';
-          frame.setAttribute('title', tile.widget);
-          frame.allow = 'autoplay; fullscreen; encrypted-media';
-          frame.setAttribute('allowfullscreen', '');
-          let src = `widgets/${tile.widget}.html`;
-          if (apiParam) src += `?api=${encodeURIComponent(apiParam)}`;
-          frame.src = src;
-          t.appendChild(frame);
-        }
-        pageEl.appendChild(t);
-      }
-      pager.appendChild(pageEl);
-    });
+    pager.style.width = `${totalPages() * 2560}px`;
+    for (const page of LAYOUTS[presetName].pages) pager.appendChild(presetPage(page));
+    for (const meta of pluginMetas) pager.appendChild(pluginPage(meta));
     update();
+  }
+
+  function presetPage(page) {
+    const pageEl = el('section', 'page');
+    for (const tile of page) {
+      const t = el('div', 'tile');
+      t.style.gridColumn = tile.col;
+      t.style.gridRow = tile.row;
+      t.dataset.widget = tile.widget;
+      if (tile.widget === 'player') {
+        mountPlayer(t, { apiParam, widgetBase: 'widgets/' });
+      } else {
+        t.appendChild(tileFrame(`widgets/${tile.widget}.html`, tile.widget));
+      }
+      pageEl.appendChild(t);
+    }
+    return pageEl;
+  }
+
+  function pluginPage(meta) {
+    const pageEl = el('section', 'page plugin-page');
+    const wrap = el('div', 'plugin-stage');
+    const frame = tileFrame(pluginIframeSrc(meta, apiParam), meta.name, false);
+    frame.classList.add('plugin-frame');
+    frame.style.width = `${meta.slot.w}px`;
+    frame.style.height = `${meta.slot.h}px`;
+    wrap.appendChild(frame);
+    // Per-widget toolbar (settings + remove), idle-hidden like the nav arrows.
+    const bar = el('div', 'plugin-toolbar');
+    bar.innerHTML = `<span class="plugin-name">${esc(trText(meta.name))}</span>
+      ${meta.settings && meta.settings.length ? '<button class="nav small" data-act="settings" title="Settings">⚙</button>' : ''}
+      <button class="nav small" data-act="remove" title="Remove from dashboard">✕</button>`;
+    bar.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'settings') openSettings(meta, { onChange: refreshPlugins });
+      else if (b.dataset.act === 'remove') {
+        removeWidget(meta.id);
+        await refreshPlugins();
+      }
+    });
+    idleHide(bar, { timeoutMs: 30000, root: pageEl });
+    pageEl.append(wrap, bar);
+    return pageEl;
+  }
+
+  function tileFrame(src, title, withApi = true) {
+    const frame = document.createElement('iframe');
+    frame.className = 'tile-frame';
+    frame.setAttribute('title', title);
+    frame.allow = 'autoplay; fullscreen; encrypted-media';
+    frame.setAttribute('allowfullscreen', '');
+    if (withApi && apiParam) src += `${src.includes('?') ? '&' : '?'}api=${encodeURIComponent(apiParam)}`;
+    frame.src = src;
+    return frame;
   }
 
   function update() {
     pager.style.transform = `translateX(${-index * 2560}px)`;
-    const count = LAYOUTS[presetName].pages.length;
-    prevBtn.style.visibility = count > 1 ? 'visible' : 'hidden';
-    nextBtn.style.visibility = count > 1 ? 'visible' : 'hidden';
+    const many = totalPages() > 1;
+    prevBtn.style.visibility = many ? 'visible' : 'hidden';
+    nextBtn.style.visibility = many ? 'visible' : 'hidden';
     setConfig('page', index);
   }
 
-  function clampIndex(i, name) {
-    const count = LAYOUTS[name].pages.length;
+  function clampIndex(i) {
     if (Number.isNaN(i)) return 0;
-    return Math.max(0, Math.min(count - 1, i));
+    return Math.max(0, Math.min(totalPages() - 1, i));
   }
 
   function goTo(i) {
-    index = clampIndex(i, presetName);
+    index = clampIndex(i);
     update();
   }
   const next = () => goTo(index + 1);
@@ -100,16 +145,21 @@ export function initGrid(root) {
     render();
   }
 
+  // Re-fetch the added widgets and re-render, keeping the current page in range.
+  async function refreshPlugins() {
+    pluginMetas = await loadAddedPages();
+    index = clampIndex(index);
+    render();
+  }
+
   prevBtn.addEventListener('click', prev);
   nextBtn.addEventListener('click', next);
+  libBtn.addEventListener('click', () => openLibrary({ apiParam, onChange: refreshPlugins }));
 
   // Touch / pointer swipe on the stage (ignore drags that start inside an iframe
   // tile so widget interactions aren't hijacked — only the gutters swipe).
   let startX = null;
   stage.addEventListener('pointerdown', (e) => {
-    // Ignore drags inside an iframe tile (those forward via postMessage) and
-    // inside the inline player (it owns its gestures — vertical switches source,
-    // and a horizontal drag there is the YouTube scrub bar, not a page swipe).
     if (e.target.closest('.tile-frame, .player-tabs')) return;
     startX = e.clientX;
   });
@@ -139,15 +189,17 @@ export function initGrid(root) {
   });
 
   render();
+  refreshPlugins(); // load imported widgets (async) and re-render
 
-  // Fade the nav arrows out after 30s idle; any interaction brings them back.
-  idleHide([prevBtn, nextBtn], { timeoutMs: 30000, root: stage });
+  // Fade the nav affordances out after 30s idle; any interaction brings them back.
+  idleHide([prevBtn, nextBtn, libBtn], { timeoutMs: 30000, root: stage });
 
   const api = {
     goTo,
     next,
     prev,
     setPreset,
+    refreshPlugins,
     get index() {
       return index;
     },
@@ -155,7 +207,7 @@ export function initGrid(root) {
       return presetName;
     },
     get pageCount() {
-      return LAYOUTS[presetName].pages.length;
+      return totalPages();
     },
   };
   window.__grid = api;
@@ -166,6 +218,12 @@ function el(tag, className) {
   const n = document.createElement(tag);
   if (className) n.className = className;
   return n;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
 }
 
 function navBtn(name, label) {
