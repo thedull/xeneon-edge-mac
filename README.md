@@ -23,7 +23,8 @@ native/xeneon-touch/       Swift HID→click driver (Corsair Edge touch on macOS
 web/                       host-agnostic widgets (served to the kiosk window)
  ├─ dashboard.html         tile grid + swipe pagination
  ├─ widgets/*.html         youtube · system-monitor · media-player · processes · ai-usage
- └─ js/host-bridge.js      resolves the API origin (?api= → __HOST_API_BASE__ → origin)
+ ├─ js/host-bridge.js      resolves the API origin (?api= → __HOST_API_BASE__ → origin)
+ └─ plugins/               imported iCUE widgets (installed/) + icue-shim.js runtime
 ```
 
 ### API contract (`http://127.0.0.1:8787`)
@@ -42,6 +43,9 @@ web/                       host-agnostic widgets (served to the kiosk window)
 | `GET /api/youtube/hls?id=` | rewritten 720p HLS playlist (segments → `/api/youtube/seg`); `409` → use `stream` |
 | `GET /api/youtube/seg?u=` | same-origin proxy for a googlevideo HLS segment (Range pass-through) |
 | `GET /api/youtube/stream?id=` | `{ url }` — direct 360p progressive mp4 (HLS fallback) |
+| `GET /api/plugins` | `{ plugins:[{id,name,devices,slot,settings,…}] }` — installed iCUE widgets |
+| `POST /api/plugins/import` | import a `.icuewidget` (raw zip body) → `{ plugin }` |
+| `DELETE /api/plugins/{id}` | uninstall a widget |
 | `GET /events` | SSE: `system` `network` `media` `ai-usage` `ping` |
 
 ## Run
@@ -81,7 +85,7 @@ skipped with `XEM_SKIP_ELECTRON=1`.
 - **Must** — YouTube **native player** (keyless search + 720p HLS via yt-dlp, see below) ✓ · System stats as **live area charts** (CPU%, real Memory Used via `vm_stat`, Disk%, network) ✓
 - **Should** — Apple Music miniplayer + volume ✓ · **Native touchscreen support** (WCH HID → mapped clicks, see below) ✓ · **Swipe paging** + floating source pill ✓
 - **Could** — Top processes ✓
-- **Would** — ai-usage-monitor integration (+ mock) ✓ · community `.icuewidget` support (next phase, see below)
+- **Would** — ai-usage-monitor integration (+ mock) ✓ · **iCUE widget compatibility** (import + run real `.icuewidget` packages, see below) ✓
 
 ## Display & window modes
 
@@ -213,22 +217,51 @@ native `<video>` controls, and the media seek/volume drags keep working):
 - Native sidecar (`sidecars/`, JSON‑over‑stdout) for CPU/GPU temps.
 - Tauri host (rewrite `src/server` + collectors in Rust; keep `web/` + the API contract).
 
-## Next phase: iCUE widget support (planned — not yet built)
+## iCUE widgets
 
-Corsair's Windows‑only iCUE lets users drop third‑party **widgets** onto the Edge.
-The next phase is to run those community widgets on macOS through this host, so the
-Edge gets the same ecosystem Windows users have. The touch + dashboard work above
-is the foundation it sits on.
+Corsair shipped an **open widget platform** for the Xeneon Edge (Elgato
+Marketplace, iCUE 5.44) — but **Windows-only**. This host runs those *unmodified*
+`.icuewidget` packages on macOS. A widget is HTML/CSS/JS + a `manifest.json`
+([spec](https://docs.elgato.com/icue/widgets/specification/)) that, on Windows,
+talks to a native iCUE bridge; we recreate that bridge and back it with our
+`/api/*` data.
 
-Scope to define when we pick it up:
+### How it works
 
-- **Package format** — inspect a real `.icuewidget` (reportedly a zip of
-  HTML/CSS/JS + a manifest). Document the manifest schema and asset layout.
-- **Runtime shim** — load widgets into `web/plugins/installed/` (already
-  git‑ignored) and render them in the tile grid like the built‑in widgets.
-- **API bridge** — map the iCUE widget JS API (sensor feeds, etc.) onto our
-  `/api/*` + SSE contract, or shim the iCUE global it expects.
-- **Sensors** — many widgets want CPU/GPU temps; pair with the planned native
-  `sidecars/` temp provider.
-- **Sandboxing** — third‑party code runs in the existing per‑widget iframe
-  isolation; decide which host APIs (if any) to expose.
+- **`web/plugins/runtime/icue-shim.js`** — a dependency-free compatibility runtime
+  that recreates what iCUE injects: `window.plugins.Mediadataprovider` /
+  `Sensorsdataprovider` (Qt-style `.connect()` signals), `window.iCUE` +
+  `iCUE_initialized`, the `<meta name="x-icue-property">` default globals, `tr()`,
+  and the lifecycle hooks (`icueEvents.onICUEInitialized` / `onDataUpdated`,
+  `plugin<Module>Events.onInitialized`). It polls `/api/media` + `/api/system`.
+- **Injection** (`src/server/server.mjs`) — any `.html` under `/plugins/installed/`
+  gets the shim injected as its first `<head>` script. Same-origin, so the
+  widgets' strict CSP (`script-src 'self'`) is *satisfied* — no relaxing needed.
+- **Loader** (`src/server/collectors/plugins.mjs` + `web/js/plugins.js`) — the
+  **⊞ Widgets** button opens the Library: drag-drop / pick a `.icuewidget`, which
+  the server unzips into `web/plugins/installed/<id>/`. Added widgets render as
+  their own dashboard **pages** (sized to the manifest's device slot); a
+  **Settings** panel is auto-generated from the `x-icue-property` controls and
+  flows into the widget via `?cfg=`.
+
+### Use it
+
+```text
+⊞ Widgets ▸ Import a .icuewidget ▸ Add ▸ swipe to the new page
+```
+
+Installed widget files live under `web/plugins/installed/` (git-ignored — they're
+third-party and separately licensed). Verified against real community widgets from
+[imnotStealthy/icue-edge-widgets](https://github.com/imnotStealthy/icue-edge-widgets);
+see [docs/icue-feasibility.md](docs/icue-feasibility.md).
+
+### Limitations / planned
+
+- **Sensors** — macOS exposes far fewer sensors than iCUE's hardware catalog (we
+  map CPU load, memory, disk). Widgets bound to GPU temp / fan RPM need the planned
+  native sensor sidecar (`sidecars/`). Media + external-API + system widgets work
+  today.
+- **Settings fidelity** — sliders/selects are as rich as the widget's manifest
+  declares (`data-min/max/step`, `data-options`); unknown control types fall back
+  to a text field.
+- The `os: ["windows"]` manifest gate is ignored by our loader.
