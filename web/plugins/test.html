@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>iCUE widget test harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #05070c;
+        color: #cfe;
+        font: 14px system-ui, sans-serif;
+      }
+      .bar {
+        padding: 8px 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      iframe {
+        display: block;
+        border: 1px solid #1d2a3a;
+        background: #000;
+      }
+      a {
+        color: #5bc8ff;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Spike harness: load an installed iCUE widget in an iframe, sized to its
+         slot, with the shim injected server-side. ?w=<id>&w=<px>&h=<px> -->
+    <div class="bar">
+      <strong>iCUE widget:</strong>
+      <span id="name"></span>
+      <span style="margin-left:auto">
+        <a href="?w=windows-media-pump&pw=560&ph=560">windows-media-pump</a> ·
+        <a href="?w=weather-now&pw=1268&ph=696">weather-now</a>
+      </span>
+    </div>
+    <div id="host"></div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const id = q.get('w') || 'windows-media-pump';
+      const pw = q.get('pw') || '560';
+      const ph = q.get('ph') || '560';
+      document.getElementById('name').textContent = id;
+      const f = document.createElement('iframe');
+      f.width = pw;
+      f.height = ph;
+      f.allow = 'autoplay';
+      f.src = `installed/${id}/index.html?api=${encodeURIComponent(location.origin)}`;
+      document.getElementById('host').appendChild(f);
+    </script>
+  </body>
+</html>

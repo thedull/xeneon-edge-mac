@@ -29,6 +29,20 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+const ICUE_SHIM_TAG = '<script src="/plugins/runtime/icue-shim.js"></script>';
+
+// Insert the iCUE shim as the first thing in <head> (before the widget's bridge +
+// scripts). Falls back to prepending if there's no <head>.
+function injectIcueShim(html) {
+  if (html.includes(ICUE_SHIM_TAG)) return html;
+  const headOpen = html.match(/<head[^>]*>/i);
+  if (headOpen) {
+    const at = headOpen.index + headOpen[0].length;
+    return html.slice(0, at) + '\n  ' + ICUE_SHIM_TAG + html.slice(at);
+  }
+  return ICUE_SHIM_TAG + '\n' + html;
+}
+
 async function serveStatic(res, webRoot, pathname) {
   let rel = decodeURIComponent(pathname);
   if (rel === '/' || rel === '') rel = '/dashboard.html';
@@ -42,8 +56,15 @@ async function serveStatic(res, webRoot, pathname) {
   try {
     const s = await stat(filePath);
     if (s.isDirectory()) return serveStatic(res, webRoot, path.join(rel, 'index.html'));
-    const data = await readFile(filePath);
+    let data = await readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
+    // Third-party iCUE widgets under plugins/installed/ expect iCUE to inject a
+    // native bridge before their scripts run. Inject our compatibility shim as the
+    // first <head> script so its globals (window.plugins, window.iCUE, …) exist in
+    // time. See web/plugins/runtime/icue-shim.js.
+    if (ext === '.html' && rel.startsWith('/plugins/installed/')) {
+      data = Buffer.from(injectIcueShim(data.toString('utf8')), 'utf8');
+    }
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Access-Control-Allow-Origin': '*',
