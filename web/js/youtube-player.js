@@ -8,6 +8,7 @@
 import { fetchJson, apiUrl } from './host-bridge.js';
 import { attachKeyboard } from './keyboard.js';
 import { idleHide } from './idle-hide.js';
+import { isMseSupported, MsePlayer } from './mse-player.js';
 
 const PLAYLIST_RE = /[?&]list=([A-Za-z0-9_-]+)/;
 
@@ -65,7 +66,8 @@ export function mountYoutube(container) {
     queueIndex: -1,   // index of currently playing item in queue
     lastLoaded: null,
     hls: null,
-    mode: 'hls',
+    mse: null,        // MsePlayer instance when using DASH
+    mode: 'mse',      // 'mse' | 'hls' | 'direct'
     autoAdvanceTimer: null,
     relatedFetched: new Set(), // video IDs we've already fetched related for
   };
@@ -109,10 +111,14 @@ export function mountYoutube(container) {
     nextUpEl.classList.add('hidden');
   }
 
-  function teardownHls() {
+  function teardown() {
     if (state.hls) {
       try { state.hls.destroy(); } catch { /* ignore */ }
       state.hls = null;
+    }
+    if (state.mse) {
+      try { state.mse.destroy(); } catch { /* ignore */ }
+      state.mse = null;
     }
   }
 
@@ -154,8 +160,7 @@ export function mountYoutube(container) {
     }, 3000);
   }
 
-  // Try 1080p HLS first (via the host's same-origin proxy); fall back to the
-  // direct 360p progressive stream when HLS/MSE is unavailable or errors.
+  // Playback chain: 1080p DASH (MSE) → 720p HLS → 360p direct mp4
   function loadVideo(id) {
     cancelAutoAdvance();
     hideError();
@@ -163,8 +168,34 @@ export function mountYoutube(container) {
     if (watchLink) watchLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
     closeSearch();
     setLoading(true);
-    teardownHls();
+    teardown();
     updateNowPlaying();
+    if (isMseSupported()) {
+      loadMse(id);
+    } else {
+      loadHls(id);
+    }
+  }
+
+  async function loadMse(id) {
+    try {
+      const data = await fetchJson(`/api/youtube/dash?id=${encodeURIComponent(id)}`);
+      if (state.lastLoaded !== id) return;
+      if (!data || !data.videoUrl || data.error) throw new Error(data?.error || 'no dash');
+      state.mode = 'mse';
+      const mse = new MsePlayer(video, data.videoUrl, data.audioUrl);
+      state.mse = mse;
+      await mse.start();
+      if (state.lastLoaded !== id) { mse.destroy(); state.mse = null; return; }
+      setLoading(false);
+      video.play().catch(() => {});
+      fetchRelated(id);
+    } catch {
+      if (state.lastLoaded === id) loadHls(id);
+    }
+  }
+
+  function loadHls(id) {
     const Hls = window.Hls;
     if (Hls && Hls.isSupported()) {
       state.mode = 'hls';
@@ -179,17 +210,17 @@ export function mountYoutube(container) {
         fetchRelated(id);
       });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
-        if (data && data.fatal) fallbackDirect(id);
+        if (data && data.fatal) loadDirect(id);
       });
     } else {
-      fallbackDirect(id);
+      loadDirect(id);
     }
   }
 
-  async function fallbackDirect(id) {
+  async function loadDirect(id) {
     if (state.lastLoaded !== id) return;
     state.mode = 'direct';
-    teardownHls();
+    teardown();
     try {
       const data = await fetchJson(`/api/youtube/stream?id=${encodeURIComponent(id)}`);
       if (state.lastLoaded !== id) return;

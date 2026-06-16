@@ -166,6 +166,16 @@ export async function handleApi(req, res, url, ctx = {}) {
         }
         return true;
       }
+      case pathname === '/api/youtube/dash': {
+        const id = url.searchParams.get('id') || '';
+        try {
+          const { resolveDash } = await import('./collectors/youtube-dash.mjs');
+          const { videoUrl, audioUrl } = await resolveDash(id);
+          return ok(res, { id, videoUrl, audioUrl, source: 'yt-dlp', ts: Date.now() });
+        } catch (err) {
+          return ok(res, { id, error: err.message, source: 'yt-dlp', ts: Date.now() });
+        }
+      }
       case pathname === '/api/youtube/related': {
         const id = url.searchParams.get('id') || '';
         try {
