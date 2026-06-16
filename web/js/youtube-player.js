@@ -185,6 +185,7 @@ export function mountYoutube(container) {
       state.mode = 'mse';
       const mse = new MsePlayer(video, data.videoUrl, data.audioUrl);
       state.mse = mse;
+      mse.onFatalError = () => { if (state.lastLoaded === id) loadHls(id); };
       await mse.start();
       if (state.lastLoaded !== id) { mse.destroy(); state.mse = null; return; }
       setLoading(false);
