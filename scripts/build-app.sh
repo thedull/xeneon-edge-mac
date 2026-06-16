@@ -35,10 +35,14 @@ echo "▶ Signing with: $SIGN_ID (helper, then app bundle)…"
 codesign --force --sign "$SIGN_ID" --identifier com.gabrieltrujillo.xeneon-touch "$APP/Contents/Resources/xeneon-touch"
 codesign --force --deep --sign "$SIGN_ID" "$APP"
 
-echo "✓ Built: $ROOT/$APP"
+echo "▶ Installing to /Applications…"
+rm -rf "/Applications/Xeneon Edge.app"
+cp -R "$APP" "/Applications/Xeneon Edge.app"
+echo "✓ Installed: /Applications/Xeneon Edge.app"
+
 if [[ "$OPEN" == "1" ]]; then
   echo "▶ Launching…"
-  open "$APP"
+  open "/Applications/Xeneon Edge.app"
 fi
 
 cat <<'EOF'
