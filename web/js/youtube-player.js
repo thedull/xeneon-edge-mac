@@ -72,6 +72,31 @@ export function mountYoutube(container) {
 
   const showError = () => errorEl.classList.remove('hidden');
   const hideError = () => errorEl.classList.add('hidden');
+
+  // Called when a video is unplayable. If there's a next item in the queue,
+  // skip to it after a brief pause; otherwise surface the error banner.
+  function handleUnavailable(id) {
+    if (state.lastLoaded !== id) return;
+    setLoading(false);
+    const nextIndex = state.queueIndex + 1;
+    if (nextIndex < state.queue.length) {
+      nextUpTitleEl.textContent = state.queue[nextIndex].title || '';
+      nextUpEl.classList.remove('hidden');
+      // Use the loading area to show "skipping" context.
+      loadingEl.querySelector('.status-banner').textContent = 'Skipping unavailable video…';
+      loadingEl.classList.remove('hidden');
+      state.autoAdvanceTimer = setTimeout(() => {
+        nextUpEl.classList.add('hidden');
+        loadingEl.classList.add('hidden');
+        loadingEl.querySelector('.status-banner').textContent = 'Loading…';
+        state.autoAdvanceTimer = null;
+        state.queueIndex = nextIndex;
+        loadVideo(state.queue[nextIndex].id);
+      }, 2000);
+    } else {
+      showError();
+    }
+  }
   const setLoading = (on) => loadingEl.classList.toggle('hidden', !on);
   const toggleSearch = () => panel.classList.toggle('open');
   const closeSearch = () => panel.classList.remove('open');
@@ -173,9 +198,9 @@ export function mountYoutube(container) {
       video.play().catch(() => {});
       fetchRelated(id);
     } catch {
-      if (state.lastLoaded === id) showError();
+      handleUnavailable(id);
     } finally {
-      if (state.lastLoaded === id) setLoading(false);
+      if (state.lastLoaded === id && state.autoAdvanceTimer === null) setLoading(false);
     }
   }
 
@@ -184,7 +209,7 @@ export function mountYoutube(container) {
   }
 
   video.addEventListener('error', () => {
-    if (state.mode === 'direct' && video.currentSrc) showError();
+    if (state.mode === 'direct' && video.currentSrc) handleUnavailable(state.lastLoaded);
   });
 
   video.addEventListener('ended', () => {
