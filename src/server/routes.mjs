@@ -170,8 +170,8 @@ export async function handleApi(req, res, url, ctx = {}) {
         const id = url.searchParams.get('id') || '';
         try {
           const { resolveDash } = await import('./collectors/youtube-dash.mjs');
-          const { videoUrl, audioUrl } = await resolveDash(id);
-          return ok(res, { id, videoUrl, audioUrl, source: 'yt-dlp', ts: Date.now() });
+          const { videoUrl, audioUrl, videoItag, audioItag } = await resolveDash(id);
+          return ok(res, { id, videoUrl, audioUrl, videoItag, audioItag, source: 'yt-dlp', ts: Date.now() });
         } catch (err) {
           return ok(res, { id, error: err.message, source: 'yt-dlp', ts: Date.now() });
         }

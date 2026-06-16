@@ -8,7 +8,7 @@
 import { fetchJson, apiUrl } from './host-bridge.js';
 import { attachKeyboard } from './keyboard.js';
 import { idleHide } from './idle-hide.js';
-import { isMseSupported, MsePlayer } from './mse-player.js';
+import { isMseSupported, MsePlayer, codecsForItags } from './mse-player.js';
 
 const PLAYLIST_RE = /[?&]list=([A-Za-z0-9_-]+)/;
 
@@ -182,8 +182,10 @@ export function mountYoutube(container) {
       const data = await fetchJson(`/api/youtube/dash?id=${encodeURIComponent(id)}`);
       if (state.lastLoaded !== id) return;
       if (!data || !data.videoUrl || data.error) throw new Error(data?.error || 'no dash');
+      const codecs = codecsForItags(data.videoItag, data.audioItag);
+      if (!codecs) throw new Error(`unsupported itags ${data.videoItag}/${data.audioItag}`);
       state.mode = 'mse';
-      const mse = new MsePlayer(video, data.videoUrl, data.audioUrl);
+      const mse = new MsePlayer(video, data.videoUrl, data.audioUrl, codecs.videoCodec, codecs.audioCodec);
       state.mse = mse;
       mse.onFatalError = () => { if (state.lastLoaded === id) loadHls(id); };
       await mse.start();

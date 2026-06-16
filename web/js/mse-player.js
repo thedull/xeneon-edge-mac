@@ -14,22 +14,55 @@
 // Codec strings are hardcoded for H.264 + AAC, which is what resolveDash()
 // constrains yt-dlp to select.
 
-const VIDEO_CODEC = 'video/mp4; codecs="avc1.640028"';
-const AUDIO_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
-const INIT_FETCH  = 512 * 1024; // first fetch — must cover ftyp+moov
-const CHUNK       = 2 * 1024 * 1024;
-const MAX_ERRORS  = 6; // consecutive errors before giving up and calling onFatalError
+const INIT_FETCH = 512 * 1024; // first fetch — must cover ftyp+moov
+const CHUNK      = 2 * 1024 * 1024;
+const MAX_ERRORS = 6;
+
+// YouTube DASH itag → MSE codec string.
+// Covers AV1 (mp4), VP9 (webm), and H.264 (mp4) at common resolutions.
+const VIDEO_CODECS = {
+  // AV1 MP4
+  399: 'video/mp4; codecs="av01.0.08M.08"', // 1080p
+  398: 'video/mp4; codecs="av01.0.04M.08"', // 720p
+  394: 'video/mp4; codecs="av01.0.00M.08"', // 144p
+  395: 'video/mp4; codecs="av01.0.01M.08"', // 240p
+  396: 'video/mp4; codecs="av01.0.02M.08"', // 360p
+  397: 'video/mp4; codecs="av01.0.04M.08"', // 480p
+  // VP9 WebM
+  248: 'video/webm; codecs="vp9"', // 1080p
+  247: 'video/webm; codecs="vp9"', // 720p
+  244: 'video/webm; codecs="vp9"', // 480p
+  243: 'video/webm; codecs="vp9"', // 360p
+  // H.264 MP4
+  137: 'video/mp4; codecs="avc1.640028"', // 1080p
+  136: 'video/mp4; codecs="avc1.4d401f"', // 720p
+  135: 'video/mp4; codecs="avc1.4d401e"', // 480p
+  134: 'video/mp4; codecs="avc1.4d401e"', // 360p
+};
+const AUDIO_CODECS = {
+  // AAC M4A
+  141: 'audio/mp4; codecs="mp4a.40.2"', // 256 kbps
+  140: 'audio/mp4; codecs="mp4a.40.2"', // 128 kbps
+  139: 'audio/mp4; codecs="mp4a.40.2"', //  48 kbps
+  // Opus WebM
+  251: 'audio/webm; codecs="opus"', // 160 kbps
+  250: 'audio/webm; codecs="opus"', //  70 kbps
+  249: 'audio/webm; codecs="opus"', //  50 kbps
+};
 
 export function isMseSupported() {
+  return typeof MediaSource !== 'undefined';
+}
+
+// Resolve codec strings for a pair of itags; returns null if unknown or unsupported.
+export function codecsForItags(videoItag, audioItag) {
+  const vc = VIDEO_CODECS[videoItag];
+  const ac = AUDIO_CODECS[audioItag];
+  if (!vc || !ac) return null;
   try {
-    return (
-      typeof MediaSource !== 'undefined' &&
-      MediaSource.isTypeSupported(VIDEO_CODEC) &&
-      MediaSource.isTypeSupported(AUDIO_CODEC)
-    );
-  } catch {
-    return false;
-  }
+    if (!MediaSource.isTypeSupported(vc) || !MediaSource.isTypeSupported(ac)) return null;
+  } catch { return null; }
+  return { videoCodec: vc, audioCodec: ac };
 }
 
 // Walk top-level MP4 boxes to find the byte offset of the first 'moof' box.
@@ -52,10 +85,12 @@ function findMoofOffset(buffer) {
 }
 
 export class MsePlayer {
-  constructor(videoEl, videoUrl, audioUrl) {
-    this.el        = videoEl;
-    this.videoUrl  = videoUrl;
-    this.audioUrl  = audioUrl;
+  constructor(videoEl, videoUrl, audioUrl, videoCodec, audioCodec) {
+    this.el         = videoEl;
+    this.videoUrl   = videoUrl;
+    this.audioUrl   = audioUrl;
+    this.videoCodec = videoCodec;
+    this.audioCodec = audioCodec;
     this.ms        = null;
     this.vSb       = null;
     this.aSb       = null;
@@ -80,8 +115,8 @@ export class MsePlayer {
       this.ms.addEventListener('sourceopen', () => { clearTimeout(t); resolve(); }, { once: true });
     });
 
-    this.vSb = this.ms.addSourceBuffer(VIDEO_CODEC);
-    this.aSb = this.ms.addSourceBuffer(AUDIO_CODEC);
+    this.vSb = this.ms.addSourceBuffer(this.videoCodec);
+    this.aSb = this.ms.addSourceBuffer(this.audioCodec);
 
     // Surface SourceBuffer errors to the fatal handler.
     const sbError = () => { if (!this._destroyed) this._fatal(); };
