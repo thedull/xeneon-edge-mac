@@ -94,10 +94,17 @@ export async function proxySegment(rawUrl, rangeHeader, req, res) {
   req.on('close', abort);
   res.on('close', abort);
 
-  const upstream = await fetch(target.href, {
-    headers: rangeHeader ? { range: rangeHeader } : {},
-    signal: ac.signal,
-  });
+  let upstream;
+  try {
+    upstream = await fetch(target.href, {
+      headers: rangeHeader ? { range: rangeHeader } : {},
+      signal: ac.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') { res.destroy(); return; }
+    res.writeHead(502).end();
+    return;
+  }
   const headers = {
     'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream',
     'Access-Control-Allow-Origin': '*',
