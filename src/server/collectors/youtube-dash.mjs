@@ -12,11 +12,14 @@ const execFileAsync = promisify(execFile);
 const cache = new Map(); // id -> { videoUrl, audioUrl, videoItag, audioItag, exp }
 const TTL_MS = 50 * 60 * 1000;
 
-// Prefer MP4 container (AV1 or H.264) + M4A audio, fall back to WebM/Opus,
-// then anything. No codec restriction — let YouTube serve what it has.
+// Quality ladder, most-compatible first:
+//   1) H.264 1080p MP4 + AAC  — widest decoder support, exists for most videos
+//   2) any MP4 1080p (AV1) + AAC — for videos that only encode 1080p in AV1
+//   3) any 1080p (VP9 WebM) + best audio — last resort
+// The client maps the returned itag to the right MSE codec string.
 const FORMAT =
+  'bestvideo[height<=1080][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/' +
   'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/' +
-  'bestvideo[height<=1080][ext=webm]+bestaudio[ext=webm]/' +
   'bestvideo[height<=1080]+bestaudio';
 
 function extractItag(url) {
