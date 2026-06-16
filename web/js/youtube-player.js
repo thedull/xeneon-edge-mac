@@ -9,19 +9,26 @@ import { fetchJson, apiUrl } from './host-bridge.js';
 import { attachKeyboard } from './keyboard.js';
 import { idleHide } from './idle-hide.js';
 
+const PLAYLIST_RE = /[?&]list=([A-Za-z0-9_-]+)/;
+
 export function mountYoutube(container) {
   container.innerHTML = `
     <div class="yt" data-widget="youtube">
       <div class="yt-player">
         <video class="yt-video" data-field="video" playsinline controls></video>
         <div class="yt-loading hidden" data-field="loading"><div class="status-banner">Loading…</div></div>
+        <div class="yt-next-up hidden" data-field="nextUp">
+          <span class="yt-next-up-label">Next up</span>
+          <span class="yt-next-up-title" data-field="nextUpTitle"></span>
+          <button class="yt-btn yt-next-up-cancel" data-action="cancel-next" aria-label="Cancel">&#10005;</button>
+        </div>
       </div>
       <div class="yt-toolbar" data-field="toolbar">
         <button class="yt-btn" data-action="toggle-search">&#128269; Search</button>
       </div>
       <div class="yt-search" data-field="searchPanel">
         <div class="yt-search-bar">
-          <input data-field="q" placeholder="Search music…" autocomplete="off" />
+          <input data-field="q" placeholder="Search or paste playlist URL…" autocomplete="off" />
           <button class="yt-btn" data-action="close-search" aria-label="Close">&#10005;</button>
         </div>
         <div class="yt-results" data-field="results"></div>
@@ -41,6 +48,8 @@ export function mountYoutube(container) {
   const results = $('[data-field="results"]');
   const errorEl = $('[data-field="error"]');
   const loadingEl = $('[data-field="loading"]');
+  const nextUpEl = $('[data-field="nextUp"]');
+  const nextUpTitleEl = $('[data-field="nextUpTitle"]');
   const watchLink = $('[data-field="watch"]');
   const q = $('[data-field="q"]');
   const video = $('[data-field="video"]');
@@ -50,7 +59,16 @@ export function mountYoutube(container) {
     return d.innerHTML;
   };
 
-  const state = { results: [], lastLoaded: null, hls: null, mode: 'hls' };
+  const state = {
+    results: [],      // items shown in the search panel
+    queue: [],        // current play queue
+    queueIndex: -1,   // index of currently playing item in queue
+    lastLoaded: null,
+    hls: null,
+    mode: 'hls',
+    autoAdvanceTimer: null,
+    relatedFetched: new Set(), // video IDs we've already fetched related for
+  };
 
   const showError = () => errorEl.classList.remove('hidden');
   const hideError = () => errorEl.classList.add('hidden');
@@ -58,26 +76,70 @@ export function mountYoutube(container) {
   const toggleSearch = () => panel.classList.toggle('open');
   const closeSearch = () => panel.classList.remove('open');
 
+  function cancelAutoAdvance() {
+    if (state.autoAdvanceTimer) {
+      clearTimeout(state.autoAdvanceTimer);
+      state.autoAdvanceTimer = null;
+    }
+    nextUpEl.classList.add('hidden');
+  }
+
   function teardownHls() {
     if (state.hls) {
-      try {
-        state.hls.destroy();
-      } catch {
-        /* ignore */
-      }
+      try { state.hls.destroy(); } catch { /* ignore */ }
       state.hls = null;
     }
   }
 
-  // Try 720p HLS first (via the host's same-origin proxy); fall back to the
+  // Highlight the currently playing result in the list.
+  function updateNowPlaying() {
+    for (const btn of results.querySelectorAll('.yt-result')) {
+      btn.classList.toggle('yt-result--playing', btn.dataset.videoId === state.lastLoaded);
+    }
+  }
+
+  // Fetch related videos for `id` in the background and append novel ones to queue.
+  async function fetchRelated(id) {
+    if (state.relatedFetched.has(id)) return;
+    state.relatedFetched.add(id);
+    try {
+      const data = await fetchJson(`/api/youtube/related?id=${encodeURIComponent(id)}`);
+      const items = data?.items || [];
+      if (!items.length) return;
+      const existing = new Set(state.queue.map((v) => v.id));
+      const fresh = items.filter((v) => v.id && !existing.has(v.id));
+      if (fresh.length) state.queue.push(...fresh);
+    } catch { /* non-critical */ }
+  }
+
+  function scheduleNext() {
+    const nextIndex = state.queueIndex + 1;
+    if (nextIndex >= state.queue.length) {
+      // Queue exhausted — nothing to auto-advance to.
+      return;
+    }
+    const next = state.queue[nextIndex];
+    nextUpTitleEl.textContent = next.title || '';
+    nextUpEl.classList.remove('hidden');
+    state.autoAdvanceTimer = setTimeout(() => {
+      nextUpEl.classList.add('hidden');
+      state.autoAdvanceTimer = null;
+      state.queueIndex = nextIndex;
+      loadVideo(next.id);
+    }, 3000);
+  }
+
+  // Try 1080p HLS first (via the host's same-origin proxy); fall back to the
   // direct 360p progressive stream when HLS/MSE is unavailable or errors.
   function loadVideo(id) {
+    cancelAutoAdvance();
     hideError();
-    state.lastLoaded = id; // set synchronously so callers/tests see the selection
+    state.lastLoaded = id;
     if (watchLink) watchLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
     closeSearch();
     setLoading(true);
     teardownHls();
+    updateNowPlaying();
     const Hls = window.Hls;
     if (Hls && Hls.isSupported()) {
       state.mode = 'hls';
@@ -89,9 +151,10 @@ export function mountYoutube(container) {
         if (state.lastLoaded !== id) return;
         setLoading(false);
         video.play().catch(() => {});
+        fetchRelated(id);
       });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
-        if (data && data.fatal) fallbackDirect(id); // 720p gone → 360p
+        if (data && data.fatal) fallbackDirect(id);
       });
     } else {
       fallbackDirect(id);
@@ -104,11 +167,11 @@ export function mountYoutube(container) {
     teardownHls();
     try {
       const data = await fetchJson(`/api/youtube/stream?id=${encodeURIComponent(id)}`);
-      if (state.lastLoaded !== id) return; // superseded by a newer selection
+      if (state.lastLoaded !== id) return;
       if (!data || !data.url) throw new Error(data && data.error ? data.error : 'no stream');
       video.src = data.url;
-      // Autoplay may be blocked without a gesture; controls remain either way.
       video.play().catch(() => {});
+      fetchRelated(id);
     } catch {
       if (state.lastLoaded === id) showError();
     } finally {
@@ -117,22 +180,48 @@ export function mountYoutube(container) {
   }
 
   function pause() {
-    try {
-      video.pause();
-    } catch {
-      /* ignore */
-    }
+    try { video.pause(); } catch { /* ignore */ }
   }
 
-  // A media error (e.g. an expired googlevideo URL) in DIRECT mode → offer the
-  // YouTube link. In HLS mode, fatal errors are handled by Hls.Events.ERROR.
   video.addEventListener('error', () => {
     if (state.mode === 'direct' && video.currentSrc) showError();
   });
 
+  video.addEventListener('ended', () => {
+    scheduleNext();
+  });
+
+  // ── Search & playlist loading ────────────────────────────────────────────────
+
+  async function loadPlaylist(url) {
+    results.innerHTML = '<div class="status-banner">Loading playlist…</div>';
+    try {
+      const data = await fetchJson(`/api/youtube/playlist?url=${encodeURIComponent(url)}`);
+      const items = data?.items || [];
+      if (!items.length) {
+        results.innerHTML = '<div class="status-banner">Playlist is empty or unavailable.</div>';
+        return;
+      }
+      state.results = items;
+      state.queue = items.slice();
+      state.queueIndex = 0;
+      renderResults();
+      loadVideo(items[0].id);
+    } catch {
+      results.innerHTML = '<div class="status-banner">Could not load playlist.</div>';
+    }
+  }
+
   async function search(query) {
     const term = (query || '').trim();
     if (!term) return;
+
+    // Detect a YouTube playlist URL pasted into the search box.
+    if (PLAYLIST_RE.test(term) && term.includes('youtube.com')) {
+      loadPlaylist(term);
+      return;
+    }
+
     results.innerHTML = '<div class="status-banner">Searching…</div>';
     try {
       const data = await fetchJson(`/api/youtube/search?q=${encodeURIComponent(term)}`);
@@ -141,6 +230,8 @@ export function mountYoutube(container) {
         results.innerHTML = '<div class="status-banner">No results — try another search.</div>';
         return;
       }
+      state.queue = state.results.slice();
+      state.queueIndex = -1;
       renderResults();
     } catch {
       results.innerHTML = '<div class="status-banner">Search failed.</div>';
@@ -157,14 +248,17 @@ export function mountYoutube(container) {
       b.innerHTML =
         `<img src="${esc(r.thumb)}" alt="" />` +
         `<span><span class="t">${esc(r.title)}</span><span class="c">${esc(r.channel)}</span></span>`;
-      b.addEventListener('click', () => loadVideo(r.id));
+      b.addEventListener('click', () => {
+        const idx = state.queue.findIndex((v) => v.id === r.id);
+        state.queueIndex = idx >= 0 ? idx : 0;
+        loadVideo(r.id);
+      });
       results.appendChild(b);
     }
+    updateNowPlaying();
   }
 
-  // Drag-to-scroll the results list. The touch driver injects mouse (not touch)
-  // events, so native finger-scroll doesn't happen — move scrollTop on drag, and
-  // swallow the click that ends a real drag so it doesn't play a result.
+  // ── Drag-to-scroll results ───────────────────────────────────────────────────
   let dragStartY = null;
   let dragStartTop = 0;
   let dragMoved = false;
@@ -179,27 +273,33 @@ export function mountYoutube(container) {
     if (Math.abs(dy) > 6) dragMoved = true;
     results.scrollTop = dragStartTop - dy;
   });
-  const endDrag = () => {
-    dragStartY = null;
-  };
+  const endDrag = () => { dragStartY = null; };
   results.addEventListener('pointerup', endDrag);
   results.addEventListener('pointercancel', endDrag);
-  results.addEventListener(
-    'click',
-    (e) => {
-      if (dragMoved) {
-        e.stopPropagation();
-        e.preventDefault();
-      }
-    },
-    true, // capture, so it pre-empts the result button's click
-  );
+  results.addEventListener('click', (e) => {
+    if (dragMoved) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
 
+  // ── Event delegation ─────────────────────────────────────────────────────────
   ytRoot.addEventListener('click', (e) => {
     const a = e.target.closest('[data-action]');
     if (!a) return;
-    if (a.dataset.action === 'toggle-search') toggleSearch();
-    else if (a.dataset.action === 'close-search') closeSearch();
+    switch (a.dataset.action) {
+      case 'toggle-search': toggleSearch(); break;
+      case 'close-search': closeSearch(); break;
+      case 'cancel-next': cancelAutoAdvance(); break;
+    }
+  });
+
+  // Tapping the "next up" banner body (not ✕) advances immediately.
+  nextUpEl.addEventListener('click', (e) => {
+    if (e.target.closest('[data-action="cancel-next"]')) return;
+    cancelAutoAdvance();
+    const nextIndex = state.queueIndex + 1;
+    if (nextIndex < state.queue.length) {
+      state.queueIndex = nextIndex;
+      loadVideo(state.queue[nextIndex].id);
+    }
   });
 
   idleHide($('[data-field="toolbar"]'), { timeoutMs: 30000 });
@@ -215,13 +315,11 @@ export function mountYoutube(container) {
     search,
     pause,
     simulateError: showError,
-    get results() {
-      return state.results;
-    },
-    get lastLoaded() {
-      return state.lastLoaded;
-    },
+    get results() { return state.results; },
+    get queue() { return state.queue; },
+    get queueIndex() { return state.queueIndex; },
+    get lastLoaded() { return state.lastLoaded; },
   };
-  window.__yt = api; // test seam
+  window.__yt = api;
   return api;
 }

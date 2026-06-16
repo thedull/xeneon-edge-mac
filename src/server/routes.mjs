@@ -166,6 +166,25 @@ export async function handleApi(req, res, url, ctx = {}) {
         }
         return true;
       }
+      case pathname === '/api/youtube/related': {
+        const id = url.searchParams.get('id') || '';
+        try {
+          const { relatedVideos } = await import('./collectors/youtube-related.mjs');
+          return ok(res, { items: await relatedVideos(id), source: 'youtube-scrape', ts: Date.now() });
+        } catch (err) {
+          return ok(res, { items: [], error: err.message, source: 'youtube-scrape', ts: Date.now() });
+        }
+      }
+      case pathname === '/api/youtube/playlist': {
+        const playlistUrl = url.searchParams.get('url') || '';
+        try {
+          const { fetchPlaylist } = await import('./collectors/youtube-playlist.mjs');
+          const result = await fetchPlaylist(playlistUrl);
+          return ok(res, { ...result, source: 'yt-dlp', ts: Date.now() });
+        } catch (err) {
+          return ok(res, { items: [], error: err.message, source: 'yt-dlp', ts: Date.now() });
+        }
+      }
       default:
         sendJson(res, 404, { error: `no route: ${req.method} ${pathname}` });
         return true;
