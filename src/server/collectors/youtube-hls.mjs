@@ -1,4 +1,4 @@
-// youtube-hls.mjs — 720p YouTube playback via HLS (itag 95, audio+video muxed).
+// youtube-hls.mjs — 1080p YouTube playback via HLS (itag 96, audio+video muxed).
 //
 // hls.js can't fetch googlevideo's .m3u8/segments directly: those responses have
 // no Access-Control-Allow-Origin, so the 127.0.0.1 page origin is blocked. We
@@ -7,9 +7,9 @@
 //                           point at /api/youtube/seg, return the rewritten text.
 //   /api/youtube/seg?u=   → stream the bytes from googlevideo (Range pass-through).
 //
-// itag 95 rotates per-video; we fall back to 18 (progressive mp4), and if the
-// resolved URL isn't actually HLS we throw `not-hls` so the route 409s and the
-// client uses the existing 360p /api/youtube/stream path.
+// Format preference: itag 96 (1080p HLS) → 95 (720p HLS) → 18 (360p progressive
+// mp4). If the resolved URL isn't actually HLS we throw `not-hls` so the route
+// 409s and the client uses the existing 360p /api/youtube/stream path.
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Readable } from 'node:stream';
@@ -28,7 +28,7 @@ export async function resolveHlsUrl(id) {
   if (hit && hit.exp > Date.now()) return hit.url;
   const { stdout } = await execFileAsync(
     ytdlpPath(),
-    ['-f', '95/18', '-g', '--no-playlist', '--no-warnings', `https://www.youtube.com/watch?v=${id}`],
+    ['-f', '96/95/18', '-g', '--no-playlist', '--no-warnings', `https://www.youtube.com/watch?v=${id}`],
     { timeout: 25000, maxBuffer: 1024 * 1024 },
   );
   const url = stdout.trim().split('\n')[0];
